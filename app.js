@@ -1,0 +1,2386 @@
+/**
+ * app.js - Controller, Router, Animasi, & Render Halaman
+ * Sistem Informasi Ternak Bagus Rejo Mulyo
+ */
+
+let activeTab = "growth"; // Tab aktif di detail domba
+
+// Inisialisasi Halaman & Event Listeners
+document.addEventListener("DOMContentLoaded", () => {
+  initApp();
+});
+
+function initApp() {
+  updateHeaderDate();
+  window.addEventListener("hashchange", router);
+  
+  // Ripple effect click listener (Mikro-interaksi global untuk semua tombol)
+  document.addEventListener("click", (e) => {
+    const target = e.target.closest(".btn, .menu-item a, .action-buttons button, .modal-close");
+    if (!target) return;
+    
+    // Ensure relative positioning
+    const position = window.getComputedStyle(target).position;
+    if (position !== "relative" && position !== "absolute" && position !== "fixed") {
+      target.style.position = "relative";
+    }
+    target.style.overflow = "hidden";
+    
+    const ripple = document.createElement("span");
+    ripple.className = "ripple-span";
+    
+    const rect = target.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    
+    ripple.style.width = ripple.style.height = `${size}px`;
+    ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+    ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+    
+    const oldRipple = target.querySelector(".ripple-span");
+    if (oldRipple) oldRipple.remove();
+    
+    target.appendChild(ripple);
+    
+    ripple.addEventListener("animationend", () => {
+      ripple.remove();
+    });
+  });
+
+  if (!window.location.hash) {
+    window.location.hash = "#dashboard";
+  } else {
+    router();
+  }
+}
+
+// Router dengan Loading Skeleton & Animasi Transisi Halaman
+function router() {
+  const hash = window.location.hash || "#dashboard";
+  const mainContent = document.getElementById("main-content");
+  
+  // Tutup menu drawer di mobile jika terbuka
+  toggleMobileMenu(false);
+  
+  const [route, queryStr] = hash.split("?");
+  const query = {};
+  if (queryStr) {
+    queryStr.split("&").forEach(param => {
+      const [key, val] = param.split("=");
+      query[key] = decodeURIComponent(val);
+    });
+  }
+  
+  // Highlight Navigasi
+  renderNavigation(route);
+  
+  // Tampilkan Loading Skeleton
+  renderSkeleton(mainContent);
+  
+  // Simulasi loading asinkronus (wow factor transition)
+  setTimeout(() => {
+    mainContent.innerHTML = ""; // Bersihkan skeleton
+    
+    // Rancang container halaman dengan animasi fade-in & slide-up
+    const pageContainer = document.createElement("div");
+    pageContainer.className = "stagger-container animate-page";
+    mainContent.appendChild(pageContainer);
+    
+    switch (route) {
+      case "#dashboard":
+        renderDashboard(pageContainer);
+        break;
+      case "#members":
+        renderMembers(pageContainer);
+        break;
+      case "#member-profile":
+        renderMemberProfile(pageContainer, query.id);
+        break;
+      case "#activities":
+        renderActivities(pageContainer);
+        break;
+      case "#sheep":
+        renderLivestock(pageContainer);
+        break;
+      case "#health":
+        renderHealthRecords(pageContainer);
+        break;
+
+      case "#finance":
+        renderFinance(pageContainer);
+        break;
+      default:
+        pageContainer.innerHTML = `
+          <div class="glass-card stagger-item stagger-1">
+            <h2>Halaman Tidak Ditemukan</h2>
+            <p>Halaman yang Anda tuju tidak tersedia.</p>
+          </div>
+        `;
+    }
+  }, 350); // Transisi loading skeleton 350ms
+}
+
+// Mobile Hamburger Menu Drawer Manager
+window.toggleMobileMenu = function(forceState) {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("drawer-overlay");
+  const btn = document.getElementById("hamburger-toggle-btn");
+  
+  if (!sidebar || !overlay || !btn) return;
+  
+  let shouldOpen = !sidebar.classList.contains("open");
+  if (typeof forceState === "boolean") {
+    shouldOpen = forceState;
+  }
+  
+  if (shouldOpen) {
+    sidebar.classList.add("open");
+    overlay.classList.add("active");
+    btn.classList.add("open");
+  } else {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("active");
+    btn.classList.remove("open");
+  }
+};
+
+// ==========================================================================
+// SKELETON LOADER & UTILITIES
+// ==========================================================================
+function renderSkeleton(container) {
+  container.innerHTML = `
+    <div class="skeleton-container">
+      <div class="skeleton-item skeleton-title"></div>
+      <div class="dashboard-grid" style="margin-top: 1rem;">
+        <div class="skeleton-item skeleton-card"></div>
+        <div class="skeleton-item skeleton-card"></div>
+        <div class="skeleton-item skeleton-card"></div>
+        <div class="skeleton-item skeleton-card"></div>
+      </div>
+      <div class="glass-card" style="height: 200px; margin-top: 1.5rem; background-color: #E2E8F0; opacity: 0.3;">
+        <div class="skeleton-item" style="height: 100%; width: 100%;"></div>
+      </div>
+    </div>
+  `;
+}
+
+function updateHeaderDate() {
+  const dateEl = document.getElementById("header-date-text");
+  if (dateEl) {
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    dateEl.textContent = new Date().toLocaleDateString('id-ID', options);
+  }
+}
+
+function formatRupiah(number) {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0
+  }).format(number);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  const options = { year: 'numeric', month: 'long', day: 'numeric' };
+  return date.toLocaleDateString('id-ID', options);
+}
+
+function calculateCashBalance() {
+  const txs = window.Database.getTransactions();
+  return txs.reduce((acc, tx) => {
+    if (tx.category === "Income" || tx.category === "Dues") {
+      return acc + tx.amount;
+    } else {
+      return acc - tx.amount;
+    }
+  }, 0);
+}
+
+function showToast(message, type = "success") {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `
+    <span>${type === 'success' ? '🐑' : type === 'danger' ? '⚠️' : 'ℹ️'}</span>
+    <span>${message}</span>
+  `;
+  
+  container.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.style.animation = "fadeOut 0.3s ease-out forwards";
+    setTimeout(() => {
+      toast.remove();
+    }, 300);
+  }, 3000);
+}
+
+// Modal Animation Managers
+function openModal(title, bodyHTML) {
+  const modal = document.getElementById("form-modal");
+  const modalTitle = document.getElementById("modal-title");
+  const modalBody = document.getElementById("modal-body-content");
+  
+  modalTitle.textContent = title;
+  modalBody.innerHTML = bodyHTML;
+  modal.style.display = "flex";
+}
+
+window.closeModal = function() {
+  const modal = document.getElementById("form-modal");
+  modal.querySelector(".modal-card").style.animation = "scaleUp 0.2s ease-in reverse forwards";
+  setTimeout(() => {
+    modal.style.display = "none";
+    modal.querySelector(".modal-card").style.animation = "";
+  }, 180);
+};
+
+function openDetailModal(title, bodyHTML) {
+  const modal = document.getElementById("detail-modal");
+  const modalTitle = document.getElementById("detail-modal-title");
+  const modalBody = document.getElementById("detail-modal-body-content");
+  
+  modalTitle.textContent = title;
+  modalBody.innerHTML = bodyHTML;
+  modal.style.display = "flex";
+}
+
+window.closeDetailModal = function() {
+  const modal = document.getElementById("detail-modal");
+  modal.querySelector(".modal-card").style.animation = "scaleUp 0.2s ease-in reverse forwards";
+  setTimeout(() => {
+    modal.style.display = "none";
+    modal.querySelector(".modal-card").style.animation = "";
+  }, 180);
+};
+
+// Animated statistic counters
+function animateCounter(id, targetVal, isRupiah = false, suffix = "") {
+  const el = document.getElementById(id);
+  if (!el) return;
+  let start = 0;
+  const duration = 800; // ms
+  const startTime = performance.now();
+  
+  function update(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const easeProgress = progress * (2 - progress); // Ease out
+    const currentVal = Math.floor(easeProgress * targetVal);
+    
+    if (isRupiah) {
+      el.textContent = formatRupiah(currentVal);
+    } else {
+      el.textContent = currentVal + suffix;
+    }
+    
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      if (isRupiah) {
+        el.textContent = formatRupiah(targetVal);
+      } else {
+        el.textContent = targetVal + suffix;
+      }
+    }
+  }
+  requestAnimationFrame(update);
+}
+
+// Fallback Empty State Builder
+function renderEmptyState(message) {
+  return `
+    <div class="empty-state-container stagger-item stagger-1">
+      <img src="assets/sheep_illustration.png" alt="Belum Ada Data" class="empty-state-img">
+      <h3 style="color: var(--primary); margin-bottom: 8px;">Belum Ada Data</h3>
+      <p style="color: var(--text-muted); font-size: 0.88rem; max-width: 440px; margin: 0 auto 1.5rem;">${message}</p>
+    </div>
+  `;
+}
+
+// ==========================================================================
+// RENDER NAVIGATION SIDEBAR & DRAWER
+// ==========================================================================
+function renderNavigation(activeHash) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  
+  const navItems = [
+    { hash: "#dashboard", label: "Dashboard", icon: "📊" },
+    { hash: "#members", label: "Data Anggota", icon: "👥" },
+    { hash: "#activities", label: "Kegiatan Kelompok", icon: "📅" },
+    { hash: "#sheep", label: "Recording Domba", icon: "🐑" },
+    { hash: "#health", label: "Rekam Medis", icon: "🩺" },
+    { hash: "#finance", label: "Laporan Keuangan", icon: "💰" }
+  ];
+
+  sidebar.innerHTML = `
+    <div class="sidebar-header">
+      <span class="sidebar-logo">🐑</span>
+      <div class="sidebar-title">
+        <h2>Bagus Rejo Mulyo</h2>
+        <span>Informasi Kelompok</span>
+      </div>
+    </div>
+    <ul class="sidebar-menu">
+      ${navItems.map(item => `
+        <li class="menu-item ${activeHash === item.hash || (item.hash === '#members' && activeHash === '#member-profile') ? 'active' : ''}">
+          <a href="${item.hash}">
+            <span class="icon">${item.icon}</span>
+            <span>${item.label}</span>
+          </a>
+        </li>
+      `).join('')}
+    </ul>
+    <div class="sidebar-footer">
+      <p>SITernak BRM v1.3.0</p>
+      <p>© 2026 Selogiri, Wonogiri</p>
+    </div>
+  `;
+}
+
+// ==========================================================================
+// 1. DASHBOARD PAGE
+// ==========================================================================
+function renderDashboard(container) {
+  const members = window.Database.getMembers();
+  const livestock = window.Database.getLivestock();
+  const transactions = window.Database.getTransactions();
+  const cashBalance = calculateCashBalance();
+  
+  const jantanCount = livestock.filter(s => s.gender === "Jantan").length;
+  const betinaCount = livestock.filter(s => s.gender === "Betina").length;
+  
+  // Kepemilikan ternak per anggota
+  const ownershipData = members.map(m => {
+    const count = window.Database.getLivestockByOwner(m.id).length;
+    return { name: m.name, count };
+  });
+  
+  const maxCount = Math.max(...ownershipData.map(o => o.count), 1);
+
+  // Kegiatan Terkini
+  const timelineActivities = [];
+  
+  // 3 domba terbaru
+  [...livestock].sort((a,b) => new Date(b.dob) - new Date(a.dob)).slice(0, 3).forEach(s => {
+    const owner = members.find(m => m.id === s.ownerId);
+    timelineActivities.push({
+      title: "Registrasi Domba Baru",
+      desc: `Domba <strong>${s.name}</strong> (${s.breed}) terdata atas nama <strong>${owner ? owner.name : 'Unassigned'}</strong>.`,
+      date: s.dob,
+      type: "livestock",
+      icon: "🐑"
+    });
+  });
+
+  // 3 transaksi keuangan terbaru
+  [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3).forEach(t => {
+    timelineActivities.push({
+      title: "Jurnal Kas Baru",
+      desc: `Mencatat <strong>${t.description}</strong> sebesar <strong>${formatRupiah(t.amount)}</strong>.`,
+      date: t.date,
+      type: "finance",
+      icon: "💰"
+    });
+  });
+
+  // 3 catatan medis terbaru
+  const healthLogs = window.Database.getHealthLogs();
+  healthLogs.slice(0, 3).forEach(h => {
+    timelineActivities.push({
+      title: "Rekam Medis Tercatat",
+      desc: `Domba <strong>${h.sheepName}</strong> didiagnosa <strong>${h.diagnosis}</strong> (${h.status}).`,
+      date: h.date,
+      type: "health",
+      icon: "🩺"
+    });
+  });
+
+  // 3 Kegiatan kelompok terbaru
+  const activities = window.Database.getActivities();
+  [...activities].sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0, 3).forEach(act => {
+    timelineActivities.push({
+      title: "Kegiatan Kelompok",
+      desc: `Melaksanakan <strong>${act.name}</strong> di <strong>${act.location}</strong>.`,
+      date: act.date,
+      type: "activity",
+      icon: "📅"
+    });
+  });
+
+  timelineActivities.sort((a,b) => new Date(b.date) - new Date(a.date));
+  const recentActivities = timelineActivities.slice(0, 5);
+
+  container.innerHTML = `
+    <!-- KPI Row -->
+    <div class="dashboard-grid stagger-item stagger-1">
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Total Anggota</span>
+          <span class="stat-value" id="count-members">0</span>
+          <span class="stat-meta">Orang terdaftar</span>
+        </div>
+        <div class="stat-icon-wrapper">👥</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Total Ternak</span>
+          <span class="stat-value" id="count-sheep">0</span>
+          <span class="stat-meta">Ekor domba terdata</span>
+        </div>
+        <div class="stat-icon-wrapper">🐑</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Jenis Kelamin</span>
+          <span class="stat-value" id="count-ratio">0</span>
+          <span class="stat-meta">Jantan / Betina</span>
+        </div>
+        <div class="stat-icon-wrapper">⚖️</div>
+      </div>
+
+      <div class="stat-card finance">
+        <div class="stat-info">
+          <span class="stat-label">Dana Kas Kelompok</span>
+          <span class="stat-value" id="count-balance">Rp0</span>
+          <span class="stat-meta">Kas BRM Saat Ini</span>
+        </div>
+        <div class="stat-icon-wrapper">💰</div>
+      </div>
+    </div>
+
+    <!-- Split Panel -->
+    <div class="dashboard-sections">
+      
+      <!-- Chart Card -->
+      <div class="glass-card stagger-item stagger-2">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>📊</span> Kepemilikan Ternak per Anggota</h2>
+        </div>
+        <div class="chart-container">
+          ${ownershipData.length === 0 ? `
+            <p style="text-align: center; color: var(--text-muted); padding: 2rem;">Belum ada data kepemilikan.</p>
+          ` : `
+            <div class="bar-chart-graphic">
+              ${ownershipData.map(o => {
+                const pct = (o.count / maxCount) * 100;
+                return `
+                  <div class="bar-column">
+                    <div class="bar-fill" style="height: 0%;" data-pct="${pct}" data-value="${o.count}"></div>
+                    <span class="bar-label" title="${o.name}">${o.name.split(' ').pop()}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            <div class="chart-legend">
+              ${ownershipData.map(o => `
+                <div class="legend-item">
+                  <span class="legend-color" style="background-color: var(--primary);"></span>
+                  <span style="font-size: 0.78rem;">${o.name}: <strong>${o.count} ekor</strong></span>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+      </div>
+
+      <!-- Timeline Card -->
+      <div class="glass-card stagger-item stagger-3">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>⏳</span> Kegiatan Terkini Kelompok</h2>
+        </div>
+        <div class="timeline">
+          ${recentActivities.length === 0 ? `
+            <p style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Belum ada kegiatan.</p>
+          ` : recentActivities.map(act => `
+            <div class="timeline-item ${act.type === 'finance' ? 'finance-tx' : ''}">
+              <div class="timeline-icon">${act.icon}</div>
+              <div class="timeline-content">
+                <div class="timeline-header">
+                  <span class="timeline-title">${act.title}</span>
+                  <span class="timeline-date">${formatDate(act.date)}</span>
+                </div>
+                <span class="timeline-desc">${act.desc}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  // Jalankan Animasi Angka
+  animateCounter("count-members", members.length);
+  animateCounter("count-sheep", livestock.length);
+  animateCounter("count-ratio", jantanCount, false, `🚹 / ${betinaCount}🚺`);
+  animateCounter("count-balance", cashBalance, true);
+
+  // Jalankan Animasi Chart Bouncing
+  setTimeout(() => {
+    const fills = document.querySelectorAll(".bar-fill");
+    fills.forEach(bar => {
+      const pct = bar.getAttribute("data-pct");
+      bar.style.height = pct + "%";
+    });
+  }, 100);
+}
+
+// ==========================================================================
+// 2. MEMBER MANAGEMENT & PORTFOLIO
+// ==========================================================================
+function renderMembers(container) {
+  const members = window.Database.getMembers();
+  
+  if (members.length === 0) {
+    container.innerHTML = `
+      <div class="glass-card stagger-item stagger-1">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>👥</span> Data Anggota</h2>
+          <button class="btn btn-primary" onclick="showAddMemberForm()">
+            <span>➕</span> Tambah Anggota Baru
+          </button>
+        </div>
+        ${renderEmptyState("Belum ada anggota terdaftar. Silakan klik tombol di atas untuk mendaftarkan anggota baru.")}
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="glass-card stagger-item stagger-1">
+      <div class="section-title-bar">
+        <h2 class="section-title"><span>👥</span> Data Anggota Kelompok</h2>
+        <button class="btn btn-primary" onclick="showAddMemberForm()">
+          <span>➕</span> Tambah Anggota Baru
+        </button>
+      </div>
+
+      <!-- Filters -->
+      <div class="actions-bar">
+        <div class="search-filter-group">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="member-search" placeholder="Cari nama anggota atau ID..." oninput="filterMembersGrid()">
+          </div>
+          <select id="member-role-filter" class="filter-select" onchange="filterMembersGrid()">
+            <option value="">Semua Jabatan</option>
+            <option value="Ketua">Ketua</option>
+            <option value="Sekretaris">Sekretaris</option>
+            <option value="Bendahara">Bendahara</option>
+            <option value="Seksi">Seksi</option>
+            <option value="Anggota">Anggota</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Member Grid (Fully responsive on mobile) -->
+      <div class="member-grid" id="members-grid-container">
+        <!-- Injected by filterMembersGrid -->
+      </div>
+    </div>
+  `;
+
+  filterMembersGrid();
+}
+
+window.filterMembersGrid = function() {
+  const members = window.Database.getMembers();
+  const searchVal = document.getElementById("member-search").value.toLowerCase();
+  const roleVal = document.getElementById("member-role-filter").value;
+  const gridContainer = document.getElementById("members-grid-container");
+
+  const filtered = members.filter(m => {
+    const matchSearch = m.name.toLowerCase().includes(searchVal) || m.id.toLowerCase().includes(searchVal);
+    const matchRole = roleVal === "" || m.role === roleVal;
+    return matchSearch && matchRole;
+  });
+
+  if (filtered.length === 0) {
+    gridContainer.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">
+        Tidak ada data anggota yang cocok.
+      </div>
+    `;
+    return;
+  }
+
+  gridContainer.innerHTML = filtered.map((m, index) => {
+    const mySheep = window.Database.getLivestockByOwner(m.id);
+    const initial = m.name.split(' ').map(n => n[0]).slice(0, 2).join('');
+    
+    return `
+      <div class="member-card stagger-item stagger-${(index % 5) + 1}" onclick="location.hash = '#member-profile?id=${m.id}'">
+        <div class="member-card-header">
+          <div class="member-avatar">${initial}</div>
+          <div class="action-buttons" onclick="event.stopPropagation();">
+            <button class="btn-icon-only btn-sm" onclick="showEditMemberForm('${m.id}')" title="Edit Member">✏️</button>
+            <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteMember('${m.id}', '${m.name}')" title="Hapus Member">🗑️</button>
+          </div>
+        </div>
+        <div class="member-card-title">
+          <h3>${m.name}</h3>
+          <span class="member-id">${m.id}</span>
+        </div>
+        
+        <div style="margin-top: 1rem;">
+          <div class="member-info-row">
+            <span class="member-info-label">Jabatan</span>
+            <span class="badge role-${m.role.toLowerCase()}">${m.role}</span>
+          </div>
+          <div class="member-info-row">
+            <span class="member-info-label">Jumlah Domba</span>
+            <span class="member-info-val" style="color: var(--primary); font-weight: 700;">${mySheep.length} Ekor</span>
+          </div>
+        </div>
+        
+        <div style="margin-top: auto; padding-top: 10px; text-align: right; color: var(--primary); font-size: 0.8rem; font-weight: 700;">
+          Lihat Portofolio →
+        </div>
+      </div>
+    `;
+  }).join('');
+};
+
+function renderMemberProfile(container, memberId) {
+  const members = window.Database.getMembers();
+  const m = members.find(item => item.id === memberId);
+  
+  if (!m) {
+    container.innerHTML = `
+      <div class="glass-card stagger-item stagger-1">
+        <h2>Anggota Tidak Ditemukan</h2>
+        <p>Data profil anggota tidak ditemukan. Kembali ke <a href="#members">Manajemen Anggota</a>.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const mySheep = window.Database.getLivestockByOwner(m.id);
+  const duesEntry = window.Database.getDues().find(d => d.memberId === m.id);
+  const initial = m.name.split(' ').map(n => n[0]).slice(0, 2).join('');
+
+  container.innerHTML = `
+    <div style="margin-bottom: 1.25rem;" class="stagger-item stagger-1">
+      <a href="#members" style="text-decoration: none; color: var(--primary); font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
+        ← Kembali ke Daftar Anggota
+      </a>
+    </div>
+
+    <!-- Header Profil -->
+    <div class="profile-header-card stagger-item stagger-2">
+      <div class="profile-avatar-large">${initial}</div>
+      <div class="profile-info">
+        <h2>${m.name}</h2>
+        <p style="opacity: 0.85; font-family: monospace; font-size: 0.85rem; margin-bottom: 8px;">ID Anggota: ${m.id}</p>
+        <div class="profile-badges-row">
+          <span class="badge role-${m.role.toLowerCase()}" style="background-color: white; color: var(--primary);">${m.role}</span>
+          <span class="badge" style="background-color: var(--primary-light); color: var(--primary);">
+            Iuran Wajib: ${duesEntry && duesEntry.duesPaid ? 'LUNAS (Lunas)' : 'TUNGGAK (Belum Bayar)'}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Livestock Portfolio Table (converted to cards on mobile) -->
+    <div class="glass-card stagger-item stagger-3">
+      <div class="section-title-bar">
+        <h2 class="section-title"><span>🐑</span> Portofolio Domba Milik ${m.name}</h2>
+        <button class="btn btn-primary btn-sm" onclick="showAddLivestockFormForMember('${m.id}')">
+          <span>➕</span> Registrasi Domba
+        </button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="custom-table responsive-table">
+          <thead>
+            <tr>
+              <th>Nama Domba</th>
+              <th>Jenis Ras</th>
+              <th>Kelamin</th>
+              <th>Tanggal Lahir</th>
+              <th style="text-align: right;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${mySheep.length === 0 ? `
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                  Belum ada domba atas nama anggota ini.
+                </td>
+              </tr>
+            ` : mySheep.map(s => `
+              <tr class="clickable-row" onclick="viewLivestockDetail('${s.id}')">
+                <td data-label="Nama Domba"><strong>${s.name}</strong></td>
+                <td data-label="Jenis Ras">${s.breed}</td>
+                <td data-label="Kelamin"><span class="badge gender-${s.gender === 'Jantan' ? 'jantan' : 'betina'}">${s.gender}</span></td>
+                <td data-label="Tanggal Lahir">${formatDate(s.dob)}</td>
+                <td data-label="Aksi">
+                  <div class="action-buttons" onclick="event.stopPropagation();">
+                    <button class="btn-icon-only btn-sm" onclick="showEditLivestockForm('${s.id}')" title="Edit Domba">✏️</button>
+                    <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteLivestock('${s.id}')" title="Hapus Domba">🗑️</button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// Member Form Modals
+window.showAddMemberForm = function() {
+  const nextId = "MBR-0" + (window.Database.getMembers().length + 1).toString().padStart(2, '0');
+  const formHTML = `
+    <form id="member-form" onsubmit="saveNewMember(event)">
+      <div class="form-group">
+        <label for="m-id">ID Anggota</label>
+        <input type="text" id="m-id" class="form-control" value="${nextId}" readonly required>
+      </div>
+      <div class="form-group">
+        <label for="m-name">Nama Lengkap</label>
+        <input type="text" id="m-name" class="form-control" placeholder="Nama lengkap..." required>
+      </div>
+      <div class="form-group">
+        <label for="m-role">Jabatan Kelompok</label>
+        <select id="m-role" class="form-control" required>
+          <option value="Anggota">Anggota</option>
+          <option value="Ketua">Ketua</option>
+          <option value="Sekretaris">Sekretaris</option>
+          <option value="Bendahara">Bendahara</option>
+          <option value="Seksi">Seksi</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  `;
+  openModal("Registrasi Anggota Baru", formHTML);
+};
+
+window.saveNewMember = async function(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const id = document.getElementById("m-id").value;
+  const name = document.getElementById("m-name").value.trim();
+  const role = document.getElementById("m-role").value;
+  
+  try {
+    await window.Database.addMember({ id, name, role });
+    closeModal();
+    showToast(`Anggota ${name} berhasil terdaftar!`);
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal mendaftarkan anggota", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.showEditMemberForm = function(id) {
+  const m = window.Database.getMembers().find(item => item.id === id);
+  if (!m) return;
+  
+  const formHTML = `
+    <form id="member-form" onsubmit="saveEditedMember(event, '${id}')">
+      <div class="form-group">
+        <label for="m-id">ID Anggota</label>
+        <input type="text" id="m-id" class="form-control" value="${m.id}" readonly>
+      </div>
+      <div class="form-group">
+        <label for="m-name">Nama Lengkap</label>
+        <input type="text" id="m-name" class="form-control" value="${m.name}" required>
+      </div>
+      <div class="form-group">
+        <label for="m-role">Jabatan Kelompok</label>
+        <select id="m-role" class="form-control" required>
+          <option value="Anggota" ${m.role === 'Anggota' ? 'selected' : ''}>Anggota</option>
+          <option value="Ketua" ${m.role === 'Ketua' ? 'selected' : ''}>Ketua</option>
+          <option value="Sekretaris" ${m.role === 'Sekretaris' ? 'selected' : ''}>Sekretaris</option>
+          <option value="Bendahara" ${m.role === 'Bendahara' ? 'selected' : ''}>Bendahara</option>
+          <option value="Seksi" ${m.role === 'Seksi' ? 'selected' : ''}>Seksi</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
+      </div>
+    </form>
+  `;
+  openModal("Edit Informasi Anggota", formHTML);
+};
+
+window.saveEditedMember = async function(e, id) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan Perubahan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const name = document.getElementById("m-name").value.trim();
+  const role = document.getElementById("m-role").value;
+  
+  try {
+    await window.Database.updateMember({ id, name, role });
+    closeModal();
+    showToast("Perubahan profil anggota disimpan!");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal memperbarui profil anggota", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.confirmDeleteMember = function(id, name) {
+  const formHTML = `
+    <div style="margin-bottom: 1.25rem; text-align: center;">
+      <p style="font-size: 1rem; color: var(--primary); margin-bottom: 6px;"><strong>Hapus Anggota Kelompok?</strong></p>
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Apakah Anda yakin ingin menghapus <strong>${name}</strong>? Data iuran serta relasi dombanya akan terhapus.</p>
+    </div>
+    <div class="form-actions" style="border: none; margin-top: 0; padding-top: 0;">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+      <button type="button" class="btn btn-danger" onclick="deleteMember('${id}')">Ya, Hapus</button>
+    </div>
+  `;
+  openModal("Konfirmasi Hapus Anggota", formHTML);
+};
+
+window.deleteMember = async function(id) {
+  const modal = document.getElementById("form-modal");
+  const btn = modal ? modal.querySelector(".btn-danger") : null;
+  const originalText = btn ? btn.innerHTML : "Ya, Hapus";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "Menghapus... ⏳";
+  }
+  try {
+    await window.Database.deleteMember(id);
+    closeModal();
+    showToast("Anggota berhasil dihapus!", "success");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menghapus anggota", "danger");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  }
+};
+
+
+// ==========================================================================
+// 3. GLOBAL LIVESTOCK RECORDING
+// ==========================================================================
+function renderLivestock(container) {
+  const list = window.Database.getLivestock();
+  const members = window.Database.getMembers();
+  
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="glass-card stagger-item stagger-1">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>🐑</span> Recording Domba Kelompok</h2>
+          <button class="btn btn-primary" onclick="showAddLivestockForm()">
+            <span>➕</span> Registrasi Domba Baru
+          </button>
+        </div>
+        ${renderEmptyState("Belum ada domba terdaftar di kelompok. Silakan registrasikan domba baru.")}
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = `
+    <div class="glass-card stagger-item stagger-1">
+      <div class="section-title-bar">
+        <h2 class="section-title"><span>🐑</span> Recording Domba Kelompok</h2>
+        <button class="btn btn-primary" onclick="showAddLivestockForm()">
+          <span>➕</span> Registrasi Domba Baru
+        </button>
+      </div>
+
+      <!-- Action Search & Relational Filters -->
+      <div class="actions-bar">
+        <div class="search-filter-group">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="sheep-search" placeholder="Cari nama domba atau silsilah..." oninput="filterLivestockTable()">
+          </div>
+          <select id="sheep-owner-filter" class="filter-select" onchange="filterLivestockTable()">
+            <option value="">Semua Pemilik</option>
+            ${members.map(m => `<option value="${m.id}">${m.name}</option>`).join('')}
+          </select>
+          <select id="sheep-breed-filter" class="filter-select" onchange="filterLivestockTable()">
+            <option value="">Semua Jenis Ras</option>
+            <option value="Domba Dorper">Domba Dorper</option>
+            <option value="Domba Lokal">Domba Lokal</option>
+            <option value="Domba Garut">Domba Garut</option>
+            <option value="Domba Ekor Gemuk (DEG)">Domba Ekor Gemuk (DEG)</option>
+            <option value="Domba Ekor Tipis (DET)">Domba Ekor Tipis (DET)</option>
+            <option value="Domba Batur">Domba Batur</option>
+            <option value="Domba Merino">Domba Merino</option>
+            <option value="Domba Texel">Domba Texel</option>
+            <option value="Crossbreed (Persilangan)">Crossbreed (Persilangan)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="custom-table responsive-table" id="sheep-table">
+          <thead>
+            <tr>
+              <th>Nama Domba</th>
+              <th>Pemilik</th>
+              <th>Jenis Ras</th>
+              <th>Kelamin</th>
+              <th>Tanggal Lahir</th>
+              <th style="text-align: right;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="sheep-table-body">
+            <!-- Injected by filterLivestockTable -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  filterLivestockTable();
+}
+
+window.filterLivestockTable = function() {
+  const list = window.Database.getLivestock();
+  const members = window.Database.getMembers();
+  
+  const searchVal = document.getElementById("sheep-search").value.toLowerCase();
+  const ownerVal = document.getElementById("sheep-owner-filter").value;
+  const breedVal = document.getElementById("sheep-breed-filter").value;
+  const tbody = document.getElementById("sheep-table-body");
+
+  const filtered = list.filter(s => {
+    const matchSearch = s.name.toLowerCase().includes(searchVal) || 
+                        (s.sire && s.sire.toLowerCase().includes(searchVal)) ||
+                        (s.dam && s.dam.toLowerCase().includes(searchVal));
+    const matchOwner = ownerVal === "" || s.ownerId === ownerVal;
+    const matchBreed = breedVal === "" || s.breed === breedVal;
+    
+    return matchSearch && matchOwner && matchBreed;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+          Tidak ada data domba terdaftar yang memenuhi kriteria filter.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(s => {
+    const owner = members.find(m => m.id === s.ownerId);
+    const ownerName = owner ? owner.name : `<span style="color: var(--danger); font-style: italic;">Unassigned</span>`;
+    
+    return `
+      <tr class="clickable-row" onclick="handleRowClick(event, '${s.id}')">
+        <td data-label="Nama Domba"><strong>${s.name}</strong></td>
+        <td data-label="Pemilik">${ownerName}</td>
+        <td data-label="Jenis Ras">${s.breed}</td>
+        <td data-label="Kelamin"><span class="badge gender-${s.gender === 'Jantan' ? 'jantan' : 'betina'}">${s.gender}</span></td>
+        <td data-label="Tanggal Lahir">${formatDate(s.dob)}</td>
+        <td data-label="Aksi">
+          <div class="action-buttons" onclick="event.stopPropagation();">
+            <button class="btn-icon-only btn-sm" onclick="showEditLivestockForm('${s.id}')" title="Edit Domba">✏️</button>
+            <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteLivestock('${s.id}')" title="Hapus Domba">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+};
+
+window.handleRowClick = function(event, id) {
+  if (event.target.closest('button') || event.target.closest('.action-buttons')) return;
+  viewLivestockDetail(id);
+};
+
+// --------------------------------------------------------------------------
+// VIEW DETAILED ANIMAL RECORD
+// --------------------------------------------------------------------------
+window.viewLivestockDetail = function(id) {
+  const sheep = window.Database.getLivestock().find(s => s.id === id);
+  if (!sheep) return;
+
+  const members = window.Database.getMembers();
+  const owner = members.find(m => m.id === sheep.ownerId);
+
+  const detailHTML = `
+    <!-- Summary Info -->
+    <div class="detail-summary-grid">
+      <div class="detail-item">
+        <span class="detail-label">Nama Domba</span>
+        <span class="detail-val">${sheep.name}</span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">Pemilik</span>
+        <span class="detail-val">${owner ? owner.name : '<span style="color: var(--danger);">Kosong</span>'}</span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">Ras & Kelamin</span>
+        <span class="detail-val">${sheep.breed} / <span class="badge gender-${sheep.gender === 'Jantan' ? 'jantan' : 'betina'}">${sheep.gender}</span></span>
+      </div>
+      <div class="detail-item">
+        <span class="detail-label">Tanggal Lahir</span>
+        <span class="detail-val">${formatDate(sheep.dob)}</span>
+      </div>
+    </div>
+
+    <!-- Tabs selector -->
+    <div class="tabs-header">
+      <button class="tab-btn ${activeTab === 'growth' ? 'active' : ''}" onclick="switchDetailTab('growth', '${sheep.id}')">📈 Perkembangan Fisik</button>
+      <button class="tab-btn ${activeTab === 'health' ? 'active' : ''}" onclick="switchDetailTab('health', '${sheep.id}')">🩺 Rekam Medis</button>
+    </div>
+
+    <!-- Tab 1: Growth -->
+    <div id="tab-growth" class="tab-pane ${activeTab === 'growth' ? 'active' : ''}">
+      <div class="tab-action-header">
+        <h4 style="color: var(--primary);">Catatan Berat & Dimensi Tubuh</h4>
+        <button class="btn btn-primary btn-sm" onclick="showAddGrowthLogForm('${sheep.id}')">➕ Tambah Ukuran</button>
+      </div>
+      <div class="table-responsive">
+        <table class="custom-table responsive-table" style="font-size: 0.82rem;">
+          <thead>
+            <tr>
+              <th>Umur</th>
+              <th>Berat Badan (kg)</th>
+              <th>Lingkar Dada (cm)</th>
+              <th>Tinggi Pundak (cm)</th>
+              <th>Panjang Badan (cm)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${!sheep.growth || sheep.growth.length === 0 ? `
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1rem;">Belum ada rekam fisik.</td>
+              </tr>
+            ` : sheep.growth.map(g => `
+              <tr>
+                <td data-label="Umur"><strong>${g.age} Bulan</strong></td>
+                <td data-label="Berat Badan"><strong>${g.weight} kg</strong></td>
+                <td data-label="Lingkar Dada">${g.chestGirth} cm</td>
+                <td data-label="Tinggi Pundak">${g.height} cm</td>
+                <td data-label="Panjang Badan">${g.length} cm</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+
+
+    <!-- Tab 3: Medical Logs -->
+    <div id="tab-health" class="tab-pane ${activeTab === 'health' ? 'active' : ''}">
+      <div class="tab-action-header">
+        <h4 style="color: var(--primary);">Catatan Sakit & Tindakan Medis</h4>
+        <button class="btn btn-primary btn-sm" onclick="showAddHealthLogForm('${sheep.id}')">➕ Tambah Rekam Medis</button>
+      </div>
+      <div class="table-responsive">
+        <table class="custom-table responsive-table" style="font-size: 0.82rem;">
+          <thead>
+            <tr>
+              <th>Tanggal</th>
+              <th>Diagnosis / Tindakan</th>
+              <th>Pengobatan / Obat</th>
+              <th>Tenaga Medis</th>
+              <th>Kondisi Akhir</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${!sheep.health || sheep.health.length === 0 ? `
+              <tr>
+                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1rem;">Belum ada rekam medis terdaftar.</td>
+              </tr>
+            ` : sheep.health.map(h => `
+              <tr>
+                <td data-label="Tanggal"><code>${formatDate(h.date)}</code></td>
+                <td data-label="Diagnosis / Tindakan"><strong>${h.diagnosis}</strong></td>
+                <td data-label="Pengobatan">${h.treatment}</td>
+                <td data-label="Tenaga Medis">${h.veterinarian}</td>
+                <td data-label="Kondisi Akhir"><span class="badge status-${h.status.toLowerCase()}">${h.status}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  openDetailModal(`Recording Medis Domba: ${sheep.name}`, detailHTML);
+};
+
+window.switchDetailTab = function(tab, id) {
+  activeTab = tab;
+  viewLivestockDetail(id);
+};
+
+// --------------------------------------------------------------------------
+// FORMS FOR LIVESTOCK CRUD
+// --------------------------------------------------------------------------
+window.showAddLivestockForm = function() {
+  const members = window.Database.getMembers();
+  const formHTML = `
+    <form id="sheep-form" onsubmit="saveNewLivestock(event)">
+      <div class="form-group">
+        <label for="s-name">Nama Domba</label>
+        <input type="text" id="s-name" class="form-control" placeholder="Nama domba..." required>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="s-owner">Pemilik Ternak</label>
+          <select id="s-owner" class="form-control" required>
+            <option value="">-- Pilih Anggota --</option>
+            ${members.map(m => `<option value="${m.id}">${m.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="s-breed">Jenis Ras Domba</label>
+          <select id="s-breed" class="form-control" required>
+            <option value="Domba Dorper">Domba Dorper</option>
+            <option value="Domba Lokal">Domba Lokal</option>
+            <option value="Domba Garut">Domba Garut</option>
+            <option value="Domba Ekor Gemuk (DEG)">Domba Ekor Gemuk (DEG)</option>
+            <option value="Domba Ekor Tipis (DET)">Domba Ekor Tipis (DET)</option>
+            <option value="Domba Batur">Domba Batur</option>
+            <option value="Domba Merino">Domba Merino</option>
+            <option value="Domba Texel">Domba Texel</option>
+            <option value="Crossbreed (Persilangan)">Crossbreed (Persilangan)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="s-gender">Jenis Kelamin</label>
+          <select id="s-gender" class="form-control" required>
+            <option value="Jantan">Jantan</option>
+            <option value="Betina">Betina</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="s-dob">Tanggal Lahir</label>
+          <input type="date" id="s-dob" class="form-control" required>
+        </div>
+      </div>
+
+
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Registrasikan</button>
+      </div>
+    </form>
+  `;
+  openModal("Registrasi Domba Baru", formHTML);
+};
+
+window.showAddLivestockFormForMember = function(memberId) {
+  showAddLivestockForm();
+  setTimeout(() => {
+    const ownerSelect = document.getElementById("s-owner");
+    if (ownerSelect) ownerSelect.value = memberId;
+  }, 100);
+};
+
+window.saveNewLivestock = async function(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Registrasikan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const name = document.getElementById("s-name").value.trim();
+  const ownerId = document.getElementById("s-owner").value;
+  const breed = document.getElementById("s-breed").value;
+  const gender = document.getElementById("s-gender").value;
+  const dob = document.getElementById("s-dob").value;
+
+  try {
+    await window.Database.addLivestock({ name, ownerId, breed, gender, dob });
+    closeModal();
+    showToast(`Domba ${name} berhasil didaftarkan!`);
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal mendaftarkan domba", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.showEditLivestockForm = function(id) {
+  const sheep = window.Database.getLivestock().find(s => s.id === id);
+  if (!sheep) return;
+
+  const members = window.Database.getMembers();
+  const formHTML = `
+    <form id="sheep-form" onsubmit="saveEditedLivestock(event, '${id}')">
+      <div class="form-group">
+        <label for="s-name">Nama Domba</label>
+        <input type="text" id="s-name" class="form-control" value="${sheep.name}" required>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="s-owner">Pemilik Ternak</label>
+          <select id="s-owner" class="form-control" required>
+            <option value="">-- Pilih Anggota --</option>
+            ${members.map(m => `<option value="${m.id}" ${sheep.ownerId === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="s-breed">Jenis Ras Domba</label>
+          <select id="s-breed" class="form-control" required>
+            <option value="Domba Dorper" ${sheep.breed === 'Domba Dorper' ? 'selected' : ''}>Domba Dorper</option>
+            <option value="Domba Lokal" ${sheep.breed === 'Domba Lokal' ? 'selected' : ''}>Domba Lokal</option>
+            <option value="Domba Garut" ${sheep.breed === 'Domba Garut' ? 'selected' : ''}>Domba Garut</option>
+            <option value="Domba Ekor Gemuk (DEG)" ${sheep.breed === 'Domba Ekor Gemuk (DEG)' ? 'selected' : ''}>Domba Ekor Gemuk (DEG)</option>
+            <option value="Domba Ekor Tipis (DET)" ${sheep.breed === 'Domba Ekor Tipis (DET)' ? 'selected' : ''}>Domba Ekor Tipis (DET)</option>
+            <option value="Domba Batur" ${sheep.breed === 'Domba Batur' ? 'selected' : ''}>Domba Batur</option>
+            <option value="Domba Merino" ${sheep.breed === 'Domba Merino' ? 'selected' : ''}>Domba Merino</option>
+            <option value="Domba Texel" ${sheep.breed === 'Domba Texel' ? 'selected' : ''}>Domba Texel</option>
+            <option value="Crossbreed (Persilangan)" ${sheep.breed === 'Crossbreed (Persilangan)' ? 'selected' : ''}>Crossbreed (Persilangan)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="s-gender">Jenis Kelamin</label>
+          <select id="s-gender" class="form-control" required>
+            <option value="Jantan" ${sheep.gender === 'Jantan' ? 'selected' : ''}>Jantan</option>
+            <option value="Betina" ${sheep.gender === 'Betina' ? 'selected' : ''}>Betina</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="s-dob">Tanggal Lahir</label>
+          <input type="date" id="s-dob" class="form-control" value="${sheep.dob}" required>
+        </div>
+      </div>
+
+
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  `;
+  openModal("Edit Informasi Domba", formHTML);
+};
+
+window.saveEditedLivestock = async function(e, originalId) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const name = document.getElementById("s-name").value.trim();
+  const ownerId = document.getElementById("s-owner").value;
+  const breed = document.getElementById("s-breed").value;
+  const gender = document.getElementById("s-gender").value;
+  const dob = document.getElementById("s-dob").value;
+
+  const list = window.Database.getLivestock();
+  const sheep = list.find(s => s.id === originalId);
+  if (!sheep) {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+    return;
+  }
+
+  const updated = {
+    ...sheep,
+    name,
+    ownerId,
+    breed,
+    gender,
+    dob
+  };
+
+  try {
+    await window.Database.updateLivestock(updated);
+    closeModal();
+    showToast("Perubahan data domba berhasil disimpan!");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menyimpan perubahan data domba", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.confirmDeleteLivestock = function(id) {
+  const sheep = window.Database.getLivestock().find(s => s.id === id);
+  if (!sheep) return;
+
+  const formHTML = `
+    <div style="margin-bottom: 1.25rem; text-align: center;">
+      <p style="font-size: 1rem; color: var(--primary); margin-bottom: 6px;"><strong>Hapus Data Domba?</strong></p>
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Apakah Anda yakin ingin menghapus <strong>${sheep.name}</strong> secara permanen?</p>
+    </div>
+    <div class="form-actions" style="border: none; margin-top: 0; padding-top: 0;">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+      <button type="button" class="btn btn-danger" onclick="deleteLivestock('${id}')">Ya, Hapus</button>
+    </div>
+  `;
+  openModal("Konfirmasi Hapus Domba", formHTML);
+};
+
+window.deleteLivestock = async function(id) {
+  const modal = document.getElementById("form-modal");
+  const btn = modal ? modal.querySelector(".btn-danger") : null;
+  const originalText = btn ? btn.innerHTML : "Ya, Hapus";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "Menghapus... ⏳";
+  }
+  try {
+    await window.Database.deleteLivestock(id);
+    closeModal();
+    showToast("Data domba berhasil dihapus!", "success");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menghapus data domba", "danger");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  }
+};
+
+// --------------------------------------------------------------------------
+// TAB LOGS DATA SUBMISSIONS
+// --------------------------------------------------------------------------
+window.showAddGrowthLogForm = function(id) {
+  const formHTML = `
+    <form id="growth-form" onsubmit="saveGrowthLog(event, '${id}')">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="g-age">Umur (Bulan)</label>
+          <input type="number" id="g-age" class="form-control" min="0" required>
+        </div>
+        <div class="form-group">
+          <label for="g-weight">Berat Badan (kg)</label>
+          <input type="number" id="g-weight" class="form-control" min="1" step="0.1" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="g-girth">Lingkar Dada (cm)</label>
+          <input type="number" id="g-girth" class="form-control" min="10" required>
+        </div>
+        <div class="form-group">
+          <label for="g-height">Tinggi Pundak (cm)</label>
+          <input type="number" id="g-height" class="form-control" min="10" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="g-length">Panjang Badan (cm)</label>
+        <input type="number" id="g-length" class="form-control" min="10" required>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  `;
+  openModal("Catat Perkembangan Fisik", formHTML);
+};
+
+window.saveGrowthLog = async function(e, id) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const age = parseInt(document.getElementById("g-age").value);
+  const weight = parseFloat(document.getElementById("g-weight").value);
+  const chestGirth = parseInt(document.getElementById("g-girth").value);
+  const height = parseInt(document.getElementById("g-height").value);
+  const length = parseInt(document.getElementById("g-length").value);
+
+  try {
+    await window.Database.addGrowthLog(id, { age, weight, chestGirth, height, length });
+    closeModal();
+    showToast("Rekam perkembangan fisik berhasil disimpan!");
+    viewLivestockDetail(id);
+  } catch (err) {
+    showToast(err.message || "Gagal menyimpan rekam fisik", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+
+
+window.showAddHealthLogForm = function(id) {
+  const today = new Date().toISOString().split('T')[0];
+  const formHTML = `
+    <form id="health-form" onsubmit="saveHealthLog(event, '${id}')">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="h-date">Tanggal Pemeriksaan</label>
+          <input type="date" id="h-date" class="form-control" value="${today}" required>
+        </div>
+        <div class="form-group">
+          <label for="h-status">Kondisi Akhir</label>
+          <select id="h-status" class="form-control" required>
+            <option value="Sehat">Sehat</option>
+            <option value="Perawatan">Perawatan</option>
+            <option value="Sakit">Sakit</option>
+            <option value="Sembuh">Sembuh</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="h-diagnosis">Diagnosis / Tindakan Medis</label>
+        <input type="text" id="h-diagnosis" class="form-control" placeholder="Contoh: Cek Kudis, Vaksinasi..." required>
+      </div>
+      <div class="form-group">
+        <label for="h-treatment">Pengobatan / Obat Diberikan</label>
+        <input type="text" id="h-treatment" class="form-control" placeholder="Contoh: Suntikan Wormectin..." required>
+      </div>
+      <div class="form-group">
+        <label for="h-vet">Petugas Medis / Pemeriksa</label>
+        <input type="text" id="h-vet" class="form-control" placeholder="Contoh: drh. Slamet..." required>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  `;
+  openModal("Catat Rekam Medis Baru", formHTML);
+};
+
+window.saveHealthLog = async function(e, id) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const date = document.getElementById("h-date").value;
+  const status = document.getElementById("h-status").value;
+  const diagnosis = document.getElementById("h-diagnosis").value.trim();
+  const treatment = document.getElementById("h-treatment").value.trim();
+  const veterinarian = document.getElementById("h-vet").value.trim();
+  const logId = "H-" + Math.floor(Math.random() * 10000);
+
+  try {
+    await window.Database.addHealthLog(id, { id: logId, date, status, diagnosis, treatment, veterinarian });
+    closeModal();
+    showToast("Catatan rekam medis baru disimpan!");
+    viewLivestockDetail(id);
+  } catch (err) {
+    showToast(err.message || "Gagal menyimpan rekam medis", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+
+// ==========================================================================
+// 4. HEALTH RECORDS PAGE
+// ==========================================================================
+function renderHealthRecords(container) {
+  const logs = window.Database.getHealthLogs();
+  
+  if (logs.length === 0) {
+    container.innerHTML = `
+      <div class="glass-card stagger-item stagger-1">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>🩺</span> Rekam Medis & Kesehatan Ternak</h2>
+          <button class="btn btn-primary" onclick="showGlobalHealthForm()">
+            <span>➕</span> Catat Rekam Medis
+          </button>
+        </div>
+        ${renderEmptyState("Belum ada rekam medis terdaftar di kelompok. Silakan catat rekam medis baru.")}
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="glass-card stagger-item stagger-1">
+      <div class="section-title-bar">
+        <h2 class="section-title"><span>🩺</span> Rekam Medis & Kesehatan Ternak</h2>
+        <button class="btn btn-primary" onclick="showGlobalHealthForm()">
+          <span>➕</span> Catat Rekam Medis
+        </button>
+      </div>
+
+      <!-- Filters -->
+      <div class="actions-bar">
+        <div class="search-filter-group">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="health-search" placeholder="Cari diagnosis, tindakan, atau nama domba..." oninput="filterHealthTable()">
+          </div>
+          <select id="health-status-filter" class="filter-select" onchange="filterHealthTable()">
+            <option value="">Semua Kondisi</option>
+            <option value="Sehat">Sehat</option>
+            <option value="Sakit">Sakit</option>
+            <option value="Perawatan">Perawatan</option>
+            <option value="Sembuh">Sembuh</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="custom-table responsive-table">
+          <thead>
+            <tr>
+              <th>Domba</th>
+              <th>Tanggal</th>
+              <th>Diagnosis / Tindakan</th>
+              <th>Pengobatan / Obat</th>
+              <th>Pemeriksa</th>
+              <th>Kondisi Akhir</th>
+              <th style="width: 50px; text-align: center;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="health-table-body">
+            <!-- Injected by filterHealthTable -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  filterHealthTable();
+}
+
+window.filterHealthTable = function() {
+  const logs = window.Database.getHealthLogs();
+  const searchVal = document.getElementById("health-search").value.toLowerCase();
+  const statusVal = document.getElementById("health-status-filter").value;
+  const tbody = document.getElementById("health-table-body");
+
+  const filtered = logs.filter(h => {
+    const matchSearch = h.sheepName.toLowerCase().includes(searchVal) ||
+                        h.diagnosis.toLowerCase().includes(searchVal) ||
+                        h.treatment.toLowerCase().includes(searchVal) ||
+                        h.veterinarian.toLowerCase().includes(searchVal);
+    const matchStatus = statusVal === "" || h.status === statusVal;
+    return matchSearch && matchStatus;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+          Tidak ada rekam medis terdaftar yang memenuhi kriteria filter.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(h => `
+    <tr class="clickable-row" onclick="viewLivestockDetail('${h.sheepId}')">
+      <td data-label="Domba"><strong>${h.sheepName}</strong></td>
+      <td data-label="Tanggal"><code>${formatDate(h.date)}</code></td>
+      <td data-label="Diagnosis / Tindakan"><strong>${h.diagnosis}</strong></td>
+      <td data-label="Pengobatan">${h.treatment}</td>
+      <td data-label="Pemeriksa">${h.veterinarian}</td>
+      <td data-label="Kondisi Akhir"><span class="badge status-${h.status.toLowerCase()}">${h.status}</span></td>
+      <td data-label="Aksi" style="text-align: center;">
+        <div onclick="event.stopPropagation();">
+          <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteHealthLog('${h.sheepId}', '${h.id}', '${h.diagnosis}')" title="Hapus Rekam">🗑️</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+};
+
+window.showGlobalHealthForm = function() {
+  const livestock = window.Database.getLivestock();
+  const today = new Date().toISOString().split('T')[0];
+  
+  if (livestock.length === 0) {
+    showToast("Belum ada domba terdaftar untuk dicatat rekam medisnya!", "danger");
+    return;
+  }
+
+  const formHTML = `
+    <form id="health-form" onsubmit="saveGlobalHealthLog(event)">
+      <div class="form-group">
+        <label for="gh-sheep">Pilih Domba</label>
+        <select id="gh-sheep" class="form-control" required>
+          <option value="">-- Pilih Domba --</option>
+          ${livestock.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="gh-date">Tanggal Pemeriksaan</label>
+          <input type="date" id="gh-date" class="form-control" value="${today}" required>
+        </div>
+        <div class="form-group">
+          <label for="gh-status">Kondisi Akhir</label>
+          <select id="gh-status" class="form-control" required>
+            <option value="Sehat">Sehat</option>
+            <option value="Perawatan">Perawatan</option>
+            <option value="Sakit">Sakit</option>
+            <option value="Sembuh">Sembuh</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="gh-diagnosis">Diagnosis / Tindakan Medis</label>
+        <input type="text" id="gh-diagnosis" class="form-control" placeholder="Contoh: Obat cacing rutin..." required>
+      </div>
+      <div class="form-group">
+        <label for="gh-treatment">Pengobatan / Dosis Obat</label>
+        <input type="text" id="gh-treatment" class="form-control" placeholder="Contoh: Diberi obat cacing..." required>
+      </div>
+      <div class="form-group">
+        <label for="gh-vet">Petugas Medis / Pemeriksa</label>
+        <input type="text" id="gh-vet" class="form-control" placeholder="Contoh: drh. Slamet..." required>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan Rekam Medis</button>
+      </div>
+    </form>
+  `;
+  openModal("Catat Rekam Medis Baru", formHTML);
+};
+
+window.saveGlobalHealthLog = async function(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan Rekam Medis";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const id = document.getElementById("gh-sheep").value;
+  const date = document.getElementById("gh-date").value;
+  const status = document.getElementById("gh-status").value;
+  const diagnosis = document.getElementById("gh-diagnosis").value.trim();
+  const treatment = document.getElementById("gh-treatment").value.trim();
+  const veterinarian = document.getElementById("gh-vet").value.trim();
+  const logId = "H-" + Math.floor(Math.random() * 10000);
+
+  try {
+    await window.Database.addHealthLog(id, { id: logId, date, status, diagnosis, treatment, veterinarian });
+    closeModal();
+    showToast("Catatan kesehatan domba tersimpan!");
+    
+    const hash = window.location.hash || "#dashboard";
+    if (hash.startsWith("#health")) {
+      filterHealthTable();
+    } else {
+      router();
+    }
+  } catch (err) {
+    showToast(err.message || "Gagal menyimpan rekam medis", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.confirmDeleteHealthLog = function(sheepId, logId, name) {
+  const formHTML = `
+    <div style="margin-bottom: 1.25rem; text-align: center;">
+      <p style="font-size: 1rem; color: var(--primary); margin-bottom: 6px;"><strong>Hapus Catatan Medis?</strong></p>
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Hapus catatan <strong>${name}</strong>?</p>
+    </div>
+    <div class="form-actions" style="border: none; margin-top: 0; padding-top: 0;">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+      <button type="button" class="btn btn-danger" onclick="deleteHealthLog('${sheepId}', '${logId}')">Ya, Hapus</button>
+    </div>
+  `;
+  openModal("Konfirmasi Hapus Rekam Medis", formHTML);
+};
+
+window.deleteHealthLog = async function(sheepId, logId) {
+  const modal = document.getElementById("form-modal");
+  const btn = modal ? modal.querySelector(".btn-danger") : null;
+  const originalText = btn ? btn.innerHTML : "Ya, Hapus";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "Menghapus... ⏳";
+  }
+  try {
+    await window.Database.deleteHealthLog(sheepId, logId);
+    closeModal();
+    showToast("Catatan medis dihapus!", "success");
+    
+    const hash = window.location.hash || "#dashboard";
+    if (hash.startsWith("#health")) {
+      filterHealthTable();
+    } else {
+      router();
+    }
+  } catch (err) {
+    showToast(err.message || "Gagal menghapus catatan medis", "danger");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  }
+};
+
+
+
+
+
+// ==========================================================================
+// 6. FINANCIAL REPORTS & LEDGER
+// ==========================================================================
+function renderFinance(container) {
+  const transactions = window.Database.getTransactions();
+  const dues = window.Database.getDues();
+  const cashBalance = calculateCashBalance();
+
+  const sortedTransactions = [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  // Hitung Laporan Keuangan
+  const incomeTotal = transactions.filter(t => t.category === "Income" || t.category === "Dues").reduce((acc, t) => acc + t.amount, 0);
+  const expenseTotal = transactions.filter(t => t.category === "Expense").reduce((acc, t) => acc + t.amount, 0);
+
+  container.innerHTML = `
+    <!-- Top Stats -->
+    <div class="dashboard-grid stagger-item stagger-1">
+      <div class="stat-card finance">
+        <div class="stat-info">
+          <span class="stat-label">Dana Kas Kelompok</span>
+          <span class="stat-value" id="f-balance">Rp0</span>
+          <span class="stat-meta">Total saat ini</span>
+        </div>
+        <div class="stat-icon-wrapper">💰</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Total Pemasukan</span>
+          <span class="stat-value" id="f-income" style="color: var(--success);">Rp0</span>
+          <span class="stat-meta">Akumulasi Kas Masuk</span>
+        </div>
+        <div class="stat-icon-wrapper" style="background-color: var(--success-light); color: var(--success);">📈</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Total Pengeluaran</span>
+          <span class="stat-value" id="f-expense" style="color: var(--danger);">Rp0</span>
+          <span class="stat-meta">Akumulasi Kas Keluar</span>
+        </div>
+        <div class="stat-icon-wrapper" style="background-color: var(--danger-light); color: var(--danger);">📉</div>
+      </div>
+    </div>
+
+    <!-- Layout Split -->
+    <div class="finance-split">
+      
+      <!-- Ledger -->
+      <div class="glass-card stagger-item stagger-2">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>📒</span> Jurnal Transaksi Keuangan</h2>
+          <button class="btn btn-primary btn-sm" onclick="showAddTransactionForm()">
+            <span>➕</span> Tambah Kas
+          </button>
+        </div>
+        
+        ${sortedTransactions.length === 0 ? renderEmptyState("Belum ada transaksi kas kelompok. Klik tombol Tambah Kas untuk memulai.") : `
+          <div class="table-responsive">
+            <table class="custom-table responsive-table">
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Keterangan</th>
+                  <th>Kategori</th>
+                  <th style="text-align: right;">Nominal</th>
+                  <th style="width: 50px; text-align: center;">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sortedTransactions.map(t => {
+                  const isPositive = t.category === "Income" || t.category === "Dues";
+                  const catLabel = t.category === "Income" ? "Pemasukan" : t.category === "Expense" ? "Pengeluaran" : "Iuran";
+                  return `
+                    <tr>
+                      <td data-label="Tanggal"><code>${formatDate(t.date)}</code></td>
+                      <td data-label="Keterangan"><strong>${t.description}</strong></td>
+                      <td data-label="Kategori"><span class="badge tx-${t.category.toLowerCase()}">${catLabel}</span></td>
+                      <td data-label="Nominal" style="text-align: right; font-weight: 700; color: ${isPositive ? 'var(--primary)' : 'var(--danger)'}">
+                        ${isPositive ? '+' : '-'} ${formatRupiah(t.amount)}
+                      </td>
+                      <td data-label="Aksi" style="text-align: center;">
+                        <div onclick="event.stopPropagation();">
+                          <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteTransaction('${t.id}')" title="Hapus Transaksi">🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <!-- Checklist Iuran -->
+      <div class="glass-card stagger-item stagger-3">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>💳</span> Pembayaran Iuran & Cicilan Anggota</h2>
+        </div>
+        <div class="dues-card-list">
+          ${dues.length === 0 ? `
+            <p style="text-align: center; color: var(--text-muted); padding: 2rem;">Belum ada iuran anggota. Registrasikan anggota kelompok terlebih dahulu.</p>
+          ` : dues.map(d => `
+            <div class="dues-item">
+              <div class="dues-member-info">
+                <span class="dues-member-name">${d.name}</span>
+                <span class="dues-debt-text">Cicilan: <strong>${d.debtInstallment > 0 ? formatRupiah(d.debtInstallment) : 'Bebas'}</strong></span>
+              </div>
+              <div class="dues-actions">
+                <div class="toggle-switch-wrapper">
+                  <span class="toggle-label">Iuran Wajib</span>
+                  <label class="switch">
+                    <input type="checkbox" ${d.duesPaid ? 'checked' : ''} onchange="toggleDuesStatus('${d.memberId}', 'duesPaid', this.checked, this)">
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                ${d.debtInstallment > 0 ? `
+                  <div class="toggle-switch-wrapper">
+                    <span class="toggle-label">Cicilan</span>
+                    <label class="switch">
+                      <input type="checkbox" ${d.installmentPaid ? 'checked' : ''} onchange="toggleDuesStatus('${d.memberId}', 'installmentPaid', this.checked, this)">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  // Animate financial statistics
+  animateCounter("f-balance", cashBalance, true);
+  animateCounter("f-income", incomeTotal, true);
+  animateCounter("f-expense", expenseTotal, true);
+}
+
+window.toggleDuesStatus = async function(memberId, field, checked, inputEl) {
+  if (inputEl) inputEl.disabled = true;
+  try {
+    await window.Database.updateDuesStatus(memberId, field, checked);
+    showToast("Status iuran anggota diperbarui!");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal memperbarui status iuran", "danger");
+    if (inputEl) inputEl.checked = !checked; // revert checkbox
+  } finally {
+    if (inputEl) inputEl.disabled = false;
+  }
+};
+
+window.showAddTransactionForm = function() {
+  const today = new Date().toISOString().split('T')[0];
+  const nextId = "TX-0" + (window.Database.getTransactions().length + 1).toString().padStart(2, '0');
+
+  const formHTML = `
+    <form id="transaction-form" onsubmit="saveNewTransaction(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="t-id">Kode Transaksi</label>
+          <input type="text" id="t-id" class="form-control" value="${nextId}" readonly>
+        </div>
+        <div class="form-group">
+          <label for="t-date">Tanggal</label>
+          <input type="date" id="t-date" class="form-control" value="${today}" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="t-desc">Keterangan Transaksi</label>
+        <input type="text" id="t-desc" class="form-control" placeholder="Contoh: Penjualan pakan, Pembelian obat..." required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="t-category">Kategori Kas</label>
+          <select id="t-category" class="form-control" required>
+            <option value="Income">Pemasukan (Kas Masuk)</option>
+            <option value="Expense">Pengeluaran (Kas Keluar)</option>
+            <option value="Dues">Iuran (Pemasukan)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="t-amount">Nominal Uang (Rp)</label>
+          <input type="number" id="t-amount" class="form-control" min="500" required>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan</button>
+      </div>
+    </form>
+  `;
+  openModal("Catat Transaksi Kas Kelompok", formHTML);
+};
+
+window.saveNewTransaction = async function(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const id = document.getElementById("t-id").value;
+  const date = document.getElementById("t-date").value;
+  const description = document.getElementById("t-desc").value.trim();
+  const category = document.getElementById("t-category").value;
+  const amount = parseInt(document.getElementById("t-amount").value);
+
+  try {
+    await window.Database.addTransaction({ id, date, description, category, amount });
+    closeModal();
+    showToast("Transaksi keuangan berhasil dicatat!");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menyimpan transaksi kas", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.confirmDeleteTransaction = function(id) {
+  const tx = window.Database.getTransactions().find(t => t.id === id);
+  if (!tx) return;
+
+  const formHTML = `
+    <div style="margin-bottom: 1.25rem; text-align: center;">
+      <p style="font-size: 1rem; color: var(--primary); margin-bottom: 6px;"><strong>Hapus Transaksi Kas?</strong></p>
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Hapus transaksi <strong>${tx.description}</strong> senilai <strong>${formatRupiah(tx.amount)}</strong>?</p>
+    </div>
+    <div class="form-actions" style="border: none; margin-top: 0; padding-top: 0;">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+      <button type="button" class="btn btn-danger" onclick="deleteTransaction('${id}')">Ya, Hapus</button>
+    </div>
+  `;
+  openModal("Konfirmasi Hapus Transaksi", formHTML);
+};
+
+window.deleteTransaction = async function(id) {
+  const modal = document.getElementById("form-modal");
+  const btn = modal ? modal.querySelector(".btn-danger") : null;
+  const originalText = btn ? btn.innerHTML : "Ya, Hapus";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "Menghapus... ⏳";
+  }
+  try {
+    await window.Database.deleteTransaction(id);
+    closeModal();
+    showToast("Transaksi dihapus!", "success");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menghapus transaksi", "danger");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  }
+};
+
+
+// ==========================================================================
+// 7. GROUP ACTIVITIES MODULE
+// ==========================================================================
+function renderActivities(container) {
+  const activities = window.Database.getActivities();
+  
+  if (activities.length === 0) {
+    container.innerHTML = `
+      <div class="glass-card stagger-item stagger-1">
+        <div class="section-title-bar">
+          <h2 class="section-title"><span>📅</span> Kegiatan Kelompok</h2>
+          <button class="btn btn-primary" onclick="showAddActivityForm()">
+            <span>➕</span> Catat Kegiatan Baru
+          </button>
+        </div>
+        ${renderEmptyState("Belum ada kegiatan kelompok tercatat. Klik tombol di atas untuk menambah kegiatan.")}
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="glass-card stagger-item stagger-1">
+      <div class="section-title-bar">
+        <h2 class="section-title"><span>📅</span> Kegiatan Kelompok</h2>
+        <button class="btn btn-primary" onclick="showAddActivityForm()">
+          <span>➕</span> Catat Kegiatan Baru
+        </button>
+      </div>
+
+      <!-- Filters -->
+      <div class="actions-bar">
+        <div class="search-filter-group">
+          <div class="search-input-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="activity-search" placeholder="Cari nama kegiatan atau lokasi..." oninput="filterActivitiesGrid()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Card Grid -->
+      <div class="activity-grid" id="activities-grid-container">
+        <!-- Injected by filterActivitiesGrid -->
+      </div>
+    </div>
+  `;
+
+  filterActivitiesGrid();
+}
+
+window.filterActivitiesGrid = function() {
+  const activities = window.Database.getActivities();
+  const searchVal = document.getElementById("activity-search").value.toLowerCase();
+  const gridContainer = document.getElementById("activities-grid-container");
+
+  const filtered = activities.filter(a => 
+    a.name.toLowerCase().includes(searchVal) || 
+    a.location.toLowerCase().includes(searchVal)
+  );
+
+  if (filtered.length === 0) {
+    gridContainer.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 2rem;">
+        Tidak ada kegiatan kelompok yang cocok dengan kriteria filter.
+      </div>
+    `;
+    return;
+  }
+
+  gridContainer.innerHTML = filtered.map((a, index) => {
+    const imageSrc = a.image || 'assets/sheep_illustration.png';
+    return `
+      <div class="activity-card stagger-item stagger-${(index % 5) + 1}" onclick="viewActivityDetail('${a.id}')">
+        <div class="activity-img-wrapper">
+          <img src="${imageSrc}" class="activity-img" alt="${a.name}">
+          <span class="activity-date-tag">${formatDate(a.date)}</span>
+        </div>
+        <div class="activity-info">
+          <h3 class="activity-name">${a.name}</h3>
+          <div class="activity-location">📍 ${a.location}</div>
+          <p class="activity-desc">${a.description || ''}</p>
+          
+          <div class="action-buttons" style="margin-top: auto; padding-top: 10px; display: flex; gap: 8px; justify-content: flex-end;" onclick="event.stopPropagation();">
+            <button class="btn-icon-only btn-sm" onclick="showEditActivityForm('${a.id}')" title="Edit Kegiatan">✏️</button>
+            <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteActivity('${a.id}', '${a.name}')" title="Hapus Kegiatan">🗑️</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+};
+
+window.showAddActivityForm = function() {
+  const today = new Date().toISOString().split('T')[0];
+  const formHTML = `
+    <form id="activity-form" onsubmit="saveNewActivity(event)">
+      <div class="form-group">
+        <label for="act-name">Nama Kegiatan</label>
+        <input type="text" id="act-name" class="form-control" placeholder="Contoh: Rapat Koordinasi, Vaksinasi Massal..." required>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="act-location">Lokasi Kegiatan</label>
+          <input type="text" id="act-location" class="form-control" placeholder="Contoh: Wonogiri..." required>
+        </div>
+        <div class="form-group">
+          <label for="act-date">Tanggal Kegiatan</label>
+          <input type="date" id="act-date" class="form-control" value="${today}" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="act-desc">Keterangan / Deskripsi</label>
+        <textarea id="act-desc" class="form-control" rows="3" placeholder="Tulis rincian jalannya kegiatan..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="act-image">Dokumentasi Foto</label>
+        <input type="file" id="act-image" class="form-control" accept="image/*" onchange="handleImageFileChange(this, 'preview-act-image')">
+        <div class="image-preview-box" id="preview-act-image">
+          <span style="color: var(--text-muted); font-size: 0.85rem;">Pratinjau Foto Dokumentasi</span>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan Kegiatan</button>
+      </div>
+    </form>
+  `;
+  openModal("Catat Kegiatan Kelompok Baru", formHTML);
+};
+
+window.handleImageFileChange = function(inputEl, previewId) {
+  const file = inputEl.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const preview = document.getElementById(previewId);
+      if (preview) {
+        preview.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+      }
+      inputEl.dataset.base64 = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+};
+
+window.saveNewActivity = async function(e) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan Kegiatan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const name = document.getElementById("act-name").value.trim();
+  const location = document.getElementById("act-location").value.trim();
+  const date = document.getElementById("act-date").value;
+  const description = document.getElementById("act-desc").value.trim();
+  const imageInput = document.getElementById("act-image");
+  const image = imageInput.dataset.base64 || "";
+
+  try {
+    await window.Database.addActivity({ name, location, date, description, image });
+    closeModal();
+    showToast("Kegiatan kelompok berhasil ditambahkan!");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menyimpan kegiatan kelompok", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.showEditActivityForm = function(id) {
+  const act = window.Database.getActivities().find(a => a.id === id);
+  if (!act) return;
+
+  const imagePreview = act.image ? `<img src="${act.image}" style="width:100%; height:100%; object-fit:cover;">` : `<span style="color: var(--text-muted); font-size: 0.85rem;">Pratinjau Foto Dokumentasi</span>`;
+
+  const formHTML = `
+    <form id="activity-form" onsubmit="saveEditedActivity(event, '${act.id}')">
+      <div class="form-group">
+        <label for="act-name">Nama Kegiatan</label>
+        <input type="text" id="act-name" class="form-control" value="${act.name}" required>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="act-location">Lokasi Kegiatan</label>
+          <input type="text" id="act-location" class="form-control" value="${act.location}" required>
+        </div>
+        <div class="form-group">
+          <label for="act-date">Tanggal Kegiatan</label>
+          <input type="date" id="act-date" class="form-control" value="${act.date}" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="act-desc">Keterangan / Deskripsi</label>
+        <textarea id="act-desc" class="form-control" rows="3">${act.description || ''}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="act-image">Dokumentasi Foto (Biarkan kosong jika tidak ingin diubah)</label>
+        <input type="file" id="act-image" class="form-control" accept="image/*" onchange="handleImageFileChange(this, 'preview-act-image')">
+        <div class="image-preview-box" id="preview-act-image">
+          ${imagePreview}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
+      </div>
+    </form>
+  `;
+  openModal("Edit Informasi Kegiatan", formHTML);
+  
+  // Set original image base64 if it existed
+  setTimeout(() => {
+    const imageInput = document.getElementById("act-image");
+    if (imageInput && act.image) {
+      imageInput.dataset.base64 = act.image;
+    }
+  }, 100);
+};
+
+window.saveEditedActivity = async function(e, id) {
+  e.preventDefault();
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Simpan Perubahan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Menyimpan... ⏳";
+  }
+  const name = document.getElementById("act-name").value.trim();
+  const location = document.getElementById("act-location").value.trim();
+  const date = document.getElementById("act-date").value;
+  const description = document.getElementById("act-desc").value.trim();
+  const imageInput = document.getElementById("act-image");
+  const image = imageInput.dataset.base64 || "";
+
+  try {
+    await window.Database.updateActivity({ id, name, location, date, description, image });
+    closeModal();
+    showToast("Perubahan kegiatan berhasil disimpan!");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menyimpan perubahan kegiatan", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
+  }
+};
+
+window.confirmDeleteActivity = function(id, name) {
+  const formHTML = `
+    <div style="margin-bottom: 1.25rem; text-align: center;">
+      <p style="font-size: 1rem; color: var(--primary); margin-bottom: 6px;"><strong>Hapus Kegiatan Kelompok?</strong></p>
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Apakah Anda yakin ingin menghapus kegiatan <strong>${name}</strong> secara permanen?</p>
+    </div>
+    <div class="form-actions" style="border: none; margin-top: 0; padding-top: 0;">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+      <button type="button" class="btn btn-danger" onclick="deleteActivity('${id}')">Ya, Hapus</button>
+    </div>
+  `;
+  openModal("Konfirmasi Hapus Kegiatan", formHTML);
+};
+
+window.deleteActivity = async function(id) {
+  const modal = document.getElementById("form-modal");
+  const btn = modal ? modal.querySelector(".btn-danger") : null;
+  const originalText = btn ? btn.innerHTML : "Ya, Hapus";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "Menghapus... ⏳";
+  }
+  try {
+    await window.Database.deleteActivity(id);
+    closeModal();
+    showToast("Kegiatan kelompok berhasil dihapus!", "success");
+    router();
+  } catch (err) {
+    showToast(err.message || "Gagal menghapus kegiatan kelompok", "danger");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
+  }
+};
+
+window.viewActivityDetail = function(id) {
+  const act = window.Database.getActivities().find(a => a.id === id);
+  if (!act) return;
+
+  const imageSrc = act.image || 'assets/sheep_illustration.png';
+  const detailHTML = `
+    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+      <div style="width: 100%; max-height: 400px; overflow: hidden; border-radius: var(--radius-md); background-color: var(--secondary-light); border: 1px solid var(--border-color);">
+        <img src="${imageSrc}" style="width:100%; height:100%; object-fit:contain; max-height:400px;" alt="${act.name}">
+      </div>
+      <div class="detail-summary-grid" style="grid-template-columns: 1fr 1fr;">
+        <div class="detail-item">
+          <span class="detail-label">Tanggal Kegiatan</span>
+          <span class="detail-val">📅 ${formatDate(act.date)}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Lokasi Kegiatan</span>
+          <span class="detail-val">📍 ${act.location}</span>
+        </div>
+      </div>
+      <div>
+        <h4 style="color: var(--primary); margin-bottom: 6px;">Keterangan / Deskripsi:</h4>
+        <p style="font-size: 0.95rem; color: var(--text-main); line-height: 1.6; background-color: white; padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">${act.description || 'Tidak ada deskripsi.'}</p>
+      </div>
+    </div>
+  `;
+  openDetailModal(`Detail Kegiatan: ${act.name}`, detailHTML);
+};

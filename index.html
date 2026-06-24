@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SITernak Bagus Rejo Mulyo - Sistem Informasi Kelompok Ternak</title>
+  
+  <!-- Premium Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="app-container">
+    <!-- Overlay for mobile/tablet navigation drawer -->
+    <div class="drawer-overlay" id="drawer-overlay" onclick="toggleMobileMenu(false)"></div>
+    
+    <!-- Navigation Sidebar (Desktop) / Sliding Nav Drawer (Mobile/Tablet) -->
+    <aside class="sidebar" id="sidebar"></aside>
+    
+    <!-- Main content wrapper -->
+    <div class="main-wrapper">
+      <header class="top-header">
+        <div class="header-left">
+          <!-- Animated Hamburger Button (Visible only on mobile/tablet) -->
+          <button class="hamburger-btn" id="hamburger-toggle-btn" onclick="toggleMobileMenu()" aria-label="Toggle Menu">
+            <span class="bar line-1"></span>
+            <span class="bar line-2"></span>
+            <span class="bar line-3"></span>
+          </button>
+          
+          <div class="header-branding">
+            <span class="mobile-logo-icon">🐑</span>
+            <div class="title-meta">
+              <h1>SITernak Bagus Rejo Mulyo</h1>
+              <p class="subtitle">Bagusan RT 02 RW 07, Sendangijo, Selogiri, Wonogiri, Jawa Tengah</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="header-actions">
+          <div class="current-date-badge" id="header-date">
+            <span class="icon">📅</span>
+            <span class="text" id="header-date-text">24 Juni 2026</span>
+          </div>
+        </div>
+      </header>
+      
+      <!-- Dynamic page content will be injected here -->
+      <main class="content-container" id="main-content"></main>
+    </div>
+  </div>
+
+  <!-- Reusable Modal Container -->
+  <div class="modal-backdrop" id="form-modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Form Tambah</h3>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" id="modal-body-content">
+        <!-- Form injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Reusable Detail View Modal Container (for Livestock Detail Tabs) -->
+  <div class="modal-backdrop" id="detail-modal" style="display: none;">
+    <div class="modal-card modal-card-large">
+      <div class="modal-header">
+        <h3 id="detail-modal-title">Detail Domba</h3>
+        <button class="modal-close" onclick="closeDetailModal()">×</button>
+      </div>
+      <div class="modal-body" id="detail-modal-body-content">
+        <!-- Detail content with tabs injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
