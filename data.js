@@ -1,11 +1,13 @@
 /**
- * data.js - Centralized Sync & Database Gateway
+ * data.js - Vercel API Gateway Client
  * Sistem Informasi Ternak Bagus Rejo Mulyo
- * Sinkronisasi data multi-perangkat via Express REST API
+ * Sinkronisasi data via REST API hosted on Vercel
  */
 
-// Connection settings
-const API_URL = window.location.protocol === 'file:' ? 'http://localhost:3000' : window.location.origin;
+// Connection settings: Points to local server when testing locally, otherwise points to Vercel production API
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3000'
+  : 'https://bagusrejomulyo.vercel.app';
 
 // Client Cache Variables
 let cachedMembers = [];
@@ -154,10 +156,9 @@ async function checkSync() {
 })();
 
 // ==========================================================================
-// CENTRAL DATABASE GATEWAY API MAPPERS (Read Cache Sync, Write Fetch REST APIs)
+// CENTRAL DATABASE GATEWAY API MAPPERS
 // ==========================================================================
 window.Database = {
-  // Getters read from local RAM cache synchronously (Instantly paints UI views)
   getMembers: () => cachedMembers,
   getLivestock: () => cachedLivestock,
   getTransactions: () => cachedTransactions,

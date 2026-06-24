@@ -1,7 +1,7 @@
 {
   "name": "ternak-bagus-rejo-mulyo",
-  "version": "1.3.0",
-  "description": "Sistem Informasi Kelompok Ternak Bagus Rejo Mulyo dengan Database Terpusat",
+  "version": "1.4.0",
+  "description": "SITernak Bagus Rejo Mulyo - Vercel Serverless & Supabase PostgreSQL",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,6 +9,6 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "sqlite3": "^5.1.7"
+    "pg": "^8.11.5"
   }
 }

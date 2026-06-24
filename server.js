@@ -1,441 +1,384 @@
 /**
- * server.js - Backend Server & Centralized Database (Dependency-free Version)
+ * server.js - Backend Server & API Gateway (Vercel Serverless & Supabase pg Version)
  * Sistem Informasi Ternak Bagus Rejo Mulyo
- * Stack: Node.js (Built-in http, fs, and sqlite modules)
+ * Stack: Node.js + Express + pg (PostgreSQL Client Pool)
  */
 
-const http = require('node:http');
-const fs = require('node:fs');
-const path = require('node:path');
-const { DatabaseSync } = require('node:sqlite');
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const { Pool } = require('pg');
 
+const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize SQLite database
-const dbPath = path.join(__dirname, 'database.sqlite');
-const db = new DatabaseSync(dbPath);
+// Enable CORS and increase JSON payload limits for Base64 photo uploads
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Enable SQLite Foreign Keys cascade deletes
-db.exec("PRAGMA foreign_keys = ON;");
+// Serve frontend static assets from the current directory (local testing)
+app.use(express.static(path.join(__dirname, '.')));
 
-// Initialize Schema Tables
-function initSchema() {
-  try {
-    // 1. Members
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS members (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL
-      )
-    `);
-
-    // 2. Dues
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS dues (
-        memberId TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        duesPaid INTEGER DEFAULT 0,
-        debtInstallment INTEGER DEFAULT 0,
-        installmentPaid INTEGER DEFAULT 1,
-        FOREIGN KEY(memberId) REFERENCES members(id) ON DELETE CASCADE
-      )
-    `);
-
-    // 3. Livestock
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS livestock (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        ownerId TEXT,
-        breed TEXT NOT NULL,
-        gender TEXT NOT NULL,
-        dob TEXT NOT NULL
-      )
-    `);
-
-    // 4. Growth Logs
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS growth_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sheepId TEXT NOT NULL,
-        age INTEGER NOT NULL,
-        weight REAL NOT NULL,
-        chestGirth INTEGER NOT NULL,
-        height INTEGER NOT NULL,
-        length INTEGER NOT NULL,
-        FOREIGN KEY(sheepId) REFERENCES livestock(id) ON DELETE CASCADE
-      )
-    `);
-
-    // 5. Health Logs
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS health_logs (
-        id TEXT PRIMARY KEY,
-        sheepId TEXT NOT NULL,
-        date TEXT NOT NULL,
-        status TEXT NOT NULL,
-        diagnosis TEXT NOT NULL,
-        treatment TEXT NOT NULL,
-        veterinarian TEXT NOT NULL,
-        FOREIGN KEY(sheepId) REFERENCES livestock(id) ON DELETE CASCADE
-      )
-    `);
-
-    // 6. Transactions
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS transactions (
-        id TEXT PRIMARY KEY,
-        date TEXT NOT NULL,
-        description TEXT NOT NULL,
-        category TEXT NOT NULL,
-        amount INTEGER NOT NULL
-      )
-    `);
-
-    // 7. Activities
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS activities (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        location TEXT NOT NULL,
-        date TEXT NOT NULL,
-        description TEXT,
-        image TEXT
-      )
-    `);
-    
-    console.log("SQLite schema tables verified and ready using node:sqlite.");
-  } catch (err) {
-    console.error("Schema creation failed:", err.message);
-  }
-}
-
-initSchema();
+// Initialize PostgreSQL Connection Pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost') ? {
+    rejectUnauthorized: false
+  } : false
+});
 
 // Global Sync Versioning Checker Variable
 let dbVersion = Date.now();
 
-// Helper to determine Content-Type
-function getContentType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  switch (ext) {
-    case '.html': return 'text/html; charset=utf-8';
-    case '.css': return 'text/css; charset=utf-8';
-    case '.js': return 'application/javascript; charset=utf-8';
-    case '.json': return 'application/json; charset=utf-8';
-    case '.png': return 'image/png';
-    case '.jpg': case '.jpeg': return 'image/jpeg';
-    case '.gif': return 'image/gif';
-    case '.svg': return 'image/svg+xml';
-    case '.ico': return 'image/x-icon';
-    default: return 'application/octet-stream';
+// --------------------------------------------------------------------------
+// REST API ENDPOINTS
+// --------------------------------------------------------------------------
+
+// GET Sync Status
+app.get('/api/sync-status', (req, res) => {
+  res.json({ version: dbVersion });
+});
+
+// GET Batch Data (Populates client memory cache)
+app.get('/api/all-data', async (req, res) => {
+  try {
+    const membersResult = await pool.query("SELECT * FROM members");
+    const duesResult = await pool.query("SELECT * FROM dues");
+    const transactionsResult = await pool.query("SELECT * FROM transactions");
+    const activitiesResult = await pool.query("SELECT * FROM activities");
+    
+    const livestockResult = await pool.query("SELECT * FROM livestock");
+    const growthResult = await pool.query("SELECT * FROM growth_logs");
+    const healthResult = await pool.query("SELECT * FROM health_logs");
+    
+    const members = membersResult.rows;
+    const duesRaw = duesResult.rows;
+    const transactions = transactionsResult.rows;
+    const activities = activitiesResult.rows;
+    
+    const livestockRaw = livestockResult.rows;
+    const growthRaw = growthResult.rows;
+    const healthRaw = healthResult.rows;
+    
+    // Map snake_case database results to camelCase expected by frontend
+    const dues = duesRaw.map(d => ({
+      memberId: d.member_id,
+      name: d.name,
+      duesPaid: d.dues_paid,
+      debtInstallment: d.debt_installment,
+      installmentPaid: d.installment_paid
+    }));
+
+    const livestock = livestockRaw.map(s => {
+      const growth = growthRaw
+        .filter(g => g.sheep_id === s.id)
+        .map(g => ({
+          id: g.id,
+          sheepId: g.sheep_id,
+          age: g.age,
+          weight: g.weight,
+          chestGirth: g.chest_g_irth || g.chest_girth, // fallback for schema typo checks
+          height: g.height,
+          length: g.length
+        }))
+        .sort((a, b) => a.age - b.age);
+
+      const health = healthRaw
+        .filter(h => h.sheep_id === s.id)
+        .map(h => ({
+          id: h.id,
+          sheepId: h.sheep_id,
+          date: h.date,
+          status: h.status,
+          diagnosis: h.diagnosis,
+          treatment: h.treatment,
+          veterinarian: h.veterinarian
+        }))
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      return {
+        id: s.id,
+        name: s.name,
+        ownerId: s.owner_id || "",
+        breed: s.breed,
+        gender: s.gender,
+        dob: s.dob,
+        growth,
+        health
+      };
+    });
+
+    res.json({
+      version: dbVersion,
+      members,
+      livestock,
+      transactions,
+      dues,
+      activities
+    });
+  } catch (err) {
+    console.error("Failed to load database batch data:", err);
+    res.status(500).json({ message: "Gagal mengambil data dari database terpusat." });
   }
-}
+});
 
-// REST API Request Router
-function handleApiRequest(req, res, pathname, body) {
-  const method = req.method;
+// --------------------------------------------------------------------------
+// MEMBERS CRUD
+// --------------------------------------------------------------------------
+app.post('/api/members', async (req, res) => {
+  const { id, name, role } = req.body;
+  if (!id || !name || !role) {
+    return res.status(400).json({ message: "Nama dan Jabatan wajib diisi." });
+  }
+  try {
+    await pool.query("INSERT INTO members (id, name, role) VALUES ($1, $2, $3)", [id, name, role]);
+    await pool.query("INSERT INTO dues (member_id, name, dues_paid, debt_installment, installment_paid) VALUES ($1, $2, FALSE, 0, TRUE)", [id, name]);
+    
+    dbVersion = Date.now();
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal mendaftarkan anggota baru." });
+  }
+});
 
-  const jsonResponse = (status, data) => {
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify(data));
-  };
+app.put('/api/members/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, role } = req.body;
+  try {
+    await pool.query("UPDATE members SET name = $1, role = $2 WHERE id = $3", [name, role, id]);
+    await pool.query("UPDATE dues SET name = $1 WHERE member_id = $2", [name, id]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal memperbarui profil anggota." });
+  }
+});
+
+app.delete('/api/members/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM members WHERE id = $1", [id]);
+    // Cascade deletes automatically clear matching entries in dues
+    await pool.query("UPDATE livestock SET owner_id = '' WHERE owner_id = $1", [id]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal menghapus data anggota." });
+  }
+});
+
+// --------------------------------------------------------------------------
+// LIVESTOCK CRUD
+// --------------------------------------------------------------------------
+app.post('/api/livestock', async (req, res) => {
+  const { id, name, ownerId, breed, gender, dob } = req.body;
+  if (!id || !name || !breed || !gender || !dob) {
+    return res.status(400).json({ message: "Data pendaftaran domba tidak lengkap." });
+  }
+  try {
+    await pool.query("INSERT INTO livestock (id, name, owner_id, breed, gender, dob) VALUES ($1, $2, $3, $4, $5, $6)", [id, name, ownerId, breed, gender, dob]);
+    
+    dbVersion = Date.now();
+    res.status(201).json({ id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal mendaftarkan domba baru." });
+  }
+});
+
+app.put('/api/livestock/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, ownerId, breed, gender, dob } = req.body;
+  try {
+    await pool.query("UPDATE livestock SET name = $1, owner_id = $2, breed = $3, gender = $4, dob = $5 WHERE id = $6", [name, ownerId, breed, gender, dob, id]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal memperbarui data domba." });
+  }
+});
+
+app.delete('/api/livestock/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM livestock WHERE id = $1", [id]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal menghapus data domba." });
+  }
+});
+
+// --------------------------------------------------------------------------
+// GROWTH LOGS CRUD
+// --------------------------------------------------------------------------
+app.post('/api/livestock/:id/growth', async (req, res) => {
+  const { id } = req.params;
+  const { age, weight, chestGirth, height, length } = req.body;
+  try {
+    await pool.query("INSERT INTO growth_logs (sheep_id, age, weight, chest_girth, height, length) VALUES ($1, $2, $3, $4, $5, $6)", [id, age, weight, chestGirth, height, length]);
+    
+    dbVersion = Date.now();
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal mencatat rekam perkembangan fisik." });
+  }
+});
+
+// --------------------------------------------------------------------------
+// HEALTH LOGS CRUD
+// --------------------------------------------------------------------------
+app.post('/api/livestock/:id/health', async (req, res) => {
+  const { id } = req.params;
+  const { id: logId, date, status, diagnosis, treatment, veterinarian } = req.body;
+  try {
+    await pool.query("INSERT INTO health_logs (id, sheep_id, date, status, diagnosis, treatment, veterinarian) VALUES ($1, $2, $3, $4, $5, $6, $7)", [logId, id, date, status, diagnosis, treatment, veterinarian]);
+    
+    dbVersion = Date.now();
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal mencatat rekam medis domba." });
+  }
+});
+
+app.delete('/api/livestock/:id/health/:logId', async (req, res) => {
+  const { logId } = req.params;
+  try {
+    await pool.query("DELETE FROM health_logs WHERE id = $1", [logId]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal menghapus rekam medis." });
+  }
+});
+
+// --------------------------------------------------------------------------
+// TRANSACTIONS CRUD
+// --------------------------------------------------------------------------
+app.post('/api/transactions', async (req, res) => {
+  const { id, date, description, category, amount } = req.body;
+  try {
+    await pool.query("INSERT INTO transactions (id, date, description, category, amount) VALUES ($1, $2, $3, $4, $5)", [id, date, description, category, amount]);
+    
+    dbVersion = Date.now();
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal mencatat transaksi kas." });
+  }
+});
+
+app.delete('/api/transactions/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM transactions WHERE id = $1", [id]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal menghapus transaksi kas." });
+  }
+});
+
+// --------------------------------------------------------------------------
+// DUES UPDATE
+// --------------------------------------------------------------------------
+app.put('/api/dues/:memberId', async (req, res) => {
+  const { memberId } = req.params;
+  const { field, val } = req.body;
+  
+  let dbField;
+  if (field === 'duesPaid') dbField = 'dues_paid';
+  else if (field === 'installmentPaid') dbField = 'installment_paid';
+  else return res.status(400).json({ message: "Field name tidak valid." });
 
   try {
-    // GET /api/sync-status
-    if (method === 'GET' && pathname === '/api/sync-status') {
-      return jsonResponse(200, { version: dbVersion });
-    }
-
-    // GET /api/all-data
-    if (method === 'GET' && pathname === '/api/all-data') {
-      const members = db.prepare("SELECT * FROM members").all();
-      const duesRaw = db.prepare("SELECT * FROM dues").all();
-      const transactions = db.prepare("SELECT * FROM transactions").all();
-      const activities = db.prepare("SELECT * FROM activities").all();
-      
-      const livestockRaw = db.prepare("SELECT * FROM livestock").all();
-      const growthRaw = db.prepare("SELECT * FROM growth_logs").all();
-      const healthRaw = db.prepare("SELECT * FROM health_logs").all();
-      
-      // Map growth and health logs to their respective livestock
-      const livestock = livestockRaw.map(s => {
-        return {
-          ...s,
-          growth: growthRaw.filter(g => g.sheepId === s.id).sort((a,b) => a.age - b.age),
-          health: healthRaw.filter(h => h.sheepId === s.id).sort((a,b) => new Date(b.date) - new Date(a.date))
-        };
-      });
-      
-      // Format boolean flags for dues (SQLite stores booleans as 0/1 integers)
-      const dues = duesRaw.map(d => ({
-        ...d,
-        duesPaid: d.duesPaid === 1,
-        installmentPaid: d.installmentPaid === 1
-      }));
-      
-      return jsonResponse(200, {
-        version: dbVersion,
-        members,
-        livestock,
-        transactions,
-        dues,
-        activities
-      });
-    }
-
-    // --------------------------------------------------------------------------
-    // MEMBERS CRUD
-    // --------------------------------------------------------------------------
-    if (method === 'POST' && pathname === '/api/members') {
-      const { id, name, role } = body || {};
-      if (!id || !name || !role) {
-        return jsonResponse(400, { message: "Nama dan Jabatan wajib diisi." });
-      }
-      db.prepare("INSERT INTO members (id, name, role) VALUES (?, ?, ?)").run(id, name, role);
-      // Auto-create matching entry in dues checklist
-      db.prepare("INSERT INTO dues (memberId, name, duesPaid, debtInstallment, installmentPaid) VALUES (?, ?, 0, 0, 1)").run(id, name);
-      
-      dbVersion = Date.now();
-      return jsonResponse(201, { success: true });
-    }
-
-    let match = pathname.match(/^\/api\/members\/([^\/]+)$/);
-    if (method === 'PUT' && match) {
-      const id = match[1];
-      const { name, role } = body || {};
-      db.prepare("UPDATE members SET name = ?, role = ? WHERE id = ?").run(name, role, id);
-      db.prepare("UPDATE dues SET name = ? WHERE memberId = ?").run(name, id);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    if (method === 'DELETE' && match) {
-      const id = match[1];
-      db.prepare("DELETE FROM members WHERE id = ?").run(id);
-      db.prepare("DELETE FROM dues WHERE memberId = ?").run(id);
-      db.prepare("UPDATE livestock SET ownerId = '' WHERE ownerId = ?").run(id);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    // --------------------------------------------------------------------------
-    // LIVESTOCK CRUD
-    // --------------------------------------------------------------------------
-    if (method === 'POST' && pathname === '/api/livestock') {
-      const { id, name, ownerId, breed, gender, dob } = body || {};
-      if (!id || !name || !breed || !gender || !dob) {
-        return jsonResponse(400, { message: "Data pendaftaran domba tidak lengkap." });
-      }
-      db.prepare("INSERT INTO livestock (id, name, ownerId, breed, gender, dob) VALUES (?, ?, ?, ?, ?, ?)").run(id, name, ownerId, breed, gender, dob);
-      
-      dbVersion = Date.now();
-      return jsonResponse(201, { id });
-    }
-
-    match = pathname.match(/^\/api\/livestock\/([^\/]+)$/);
-    if (method === 'PUT' && match) {
-      const id = match[1];
-      const { name, ownerId, breed, gender, dob } = body || {};
-      db.prepare("UPDATE livestock SET name = ?, ownerId = ?, breed = ?, gender = ?, dob = ? WHERE id = ?").run(name, ownerId, breed, gender, dob, id);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    if (method === 'DELETE' && match) {
-      const id = match[1];
-      db.prepare("DELETE FROM livestock WHERE id = ?").run(id);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    // --------------------------------------------------------------------------
-    // GROWTH LOGS CRUD
-    // --------------------------------------------------------------------------
-    match = pathname.match(/^\/api\/livestock\/([^\/]+)\/growth$/);
-    if (method === 'POST' && match) {
-      const id = match[1];
-      const { age, weight, chestGirth, height, length } = body || {};
-      db.prepare("INSERT INTO growth_logs (sheepId, age, weight, chestGirth, height, length) VALUES (?, ?, ?, ?, ?, ?)").run(id, age, weight, chestGirth, height, length);
-      
-      dbVersion = Date.now();
-      return jsonResponse(201, { success: true });
-    }
-
-    // --------------------------------------------------------------------------
-    // HEALTH LOGS CRUD
-    // --------------------------------------------------------------------------
-    match = pathname.match(/^\/api\/livestock\/([^\/]+)\/health$/);
-    if (method === 'POST' && match) {
-      const id = match[1];
-      const { id: logId, date, status, diagnosis, treatment, veterinarian } = body || {};
-      db.prepare("INSERT INTO health_logs (id, sheepId, date, status, diagnosis, treatment, veterinarian) VALUES (?, ?, ?, ?, ?, ?, ?)").run(logId, id, date, status, diagnosis, treatment, veterinarian);
-      
-      dbVersion = Date.now();
-      return jsonResponse(201, { success: true });
-    }
-
-    match = pathname.match(/^\/api\/livestock\/([^\/]+)\/health\/([^\/]+)$/);
-    if (method === 'DELETE' && match) {
-      const logId = match[2];
-      db.prepare("DELETE FROM health_logs WHERE id = ?").run(logId);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    // --------------------------------------------------------------------------
-    // TRANSACTIONS CRUD
-    // --------------------------------------------------------------------------
-    if (method === 'POST' && pathname === '/api/transactions') {
-      const { id, date, description, category, amount } = body || {};
-      db.prepare("INSERT INTO transactions (id, date, description, category, amount) VALUES (?, ?, ?, ?, ?)").run(id, date, description, category, amount);
-      
-      dbVersion = Date.now();
-      return jsonResponse(201, { success: true });
-    }
-
-    match = pathname.match(/^\/api\/transactions\/([^\/]+)$/);
-    if (method === 'DELETE' && match) {
-      const id = match[1];
-      db.prepare("DELETE FROM transactions WHERE id = ?").run(id);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    // --------------------------------------------------------------------------
-    // DUES UPDATE
-    // --------------------------------------------------------------------------
-    match = pathname.match(/^\/api\/dues\/([^\/]+)$/);
-    if (method === 'PUT' && match) {
-      const memberId = match[1];
-      const { field, val } = body || {};
-      const valInt = val ? 1 : 0;
-      if (field !== 'duesPaid' && field !== 'installmentPaid') {
-        return jsonResponse(400, { message: "Invalid field name." });
-      }
-      db.prepare(`UPDATE dues SET ${field} = ? WHERE memberId = ?`).run(valInt, memberId);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    // --------------------------------------------------------------------------
-    // GROUP ACTIVITIES CRUD
-    // --------------------------------------------------------------------------
-    if (method === 'POST' && pathname === '/api/activities') {
-      const { id, name, location, date, description, image } = body || {};
-      db.prepare("INSERT INTO activities (id, name, location, date, description, image) VALUES (?, ?, ?, ?, ?, ?)").run(id, name, location, date, description, image);
-      
-      dbVersion = Date.now();
-      return jsonResponse(201, { success: true });
-    }
-
-    match = pathname.match(/^\/api\/activities\/([^\/]+)$/);
-    if (method === 'PUT' && match) {
-      const id = match[1];
-      const { name, location, date, description, image } = body || {};
-      if (image) {
-        db.prepare("UPDATE activities SET name = ?, location = ?, date = ?, description = ?, image = ? WHERE id = ?").run(name, location, date, description, image, id);
-      } else {
-        db.prepare("UPDATE activities SET name = ?, location = ?, date = ?, description = ? WHERE id = ?").run(name, location, date, description, id);
-      }
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    if (method === 'DELETE' && match) {
-      const id = match[1];
-      db.prepare("DELETE FROM activities WHERE id = ?").run(id);
-      
-      dbVersion = Date.now();
-      return jsonResponse(200, { success: true });
-    }
-
-    // Fallback if API route not recognized
-    return jsonResponse(404, { message: "Endpoint API tidak ditemukan." });
-
+    await pool.query(`UPDATE dues SET ${dbField} = $1 WHERE member_id = $2`, [val, memberId]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
   } catch (err) {
-    console.error("API Error details:", err);
-    return jsonResponse(500, { message: err.message || "Gagal memproses transaksi database terpusat." });
+    console.error(err);
+    res.status(500).json({ message: "Gagal memperbarui status iuran anggota." });
   }
+});
+
+// --------------------------------------------------------------------------
+// GROUP ACTIVITIES CRUD
+// --------------------------------------------------------------------------
+app.post('/api/activities', async (req, res) => {
+  const { id, name, location, date, description, image } = req.body;
+  try {
+    await pool.query("INSERT INTO activities (id, name, location, date, description, image) VALUES ($1, $2, $3, $4, $5, $6)", [id, name, location, date, description, image]);
+    
+    dbVersion = Date.now();
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal mencatat kegiatan kelompok baru." });
+  }
+});
+
+app.put('/api/activities/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, location, date, description, image } = req.body;
+  try {
+    if (image) {
+      await pool.query("UPDATE activities SET name = $1, location = $2, date = $3, description = $4, image = $5 WHERE id = $6", [name, location, date, description, image, id]);
+    } else {
+      await pool.query("UPDATE activities SET name = $1, location = $2, date = $3, description = $4 WHERE id = $5", [name, location, date, description, id]);
+    }
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal memperbarui informasi kegiatan kelompok." });
+  }
+});
+
+app.delete('/api/activities/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM activities WHERE id = $1", [id]);
+    
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal menghapus rekam kegiatan kelompok." });
+  }
+});
+
+// Fallback: Redirect all other routes to index.html for SPA router support
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Local Start Server Listener
+if (process.env.NODE_ENV !== 'production' && require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`================================================================`);
+    console.log(` SITernak PostgreSQL Database Local Server running successfully!`);
+    console.log(` - Port: ${PORT}`);
+    console.log(`================================================================`);
+  });
 }
 
-// HTTP Server
-const server = http.createServer((req, res) => {
-  // CORS configuration
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  // Parse URL pathname
-  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const pathname = parsedUrl.pathname;
-
-  if (pathname.startsWith('/api/')) {
-    // Buffer Request Payload for JSON Parsing
-    let body = '';
-    req.on('data', chunk => {
-      body += chunk.toString();
-    });
-    req.on('end', () => {
-      let payload = null;
-      if (body) {
-        try {
-          payload = JSON.parse(body);
-        } catch (e) {
-          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ message: "Payload JSON tidak valid." }));
-          return;
-        }
-      }
-      handleApiRequest(req, res, pathname, payload);
-    });
-  } else {
-    // Serve Static File
-    let fileRelativePath = pathname === '/' ? 'index.html' : pathname;
-    let absolutePath = path.join(__dirname, fileRelativePath);
-
-    // Prevent directory traversal attacks
-    if (!absolutePath.startsWith(__dirname)) {
-      res.writeHead(403);
-      res.end('Akses ditolak.');
-      return;
-    }
-
-    fs.stat(absolutePath, (err, stats) => {
-      if (err || !stats.isFile()) {
-        // Single Page Application SPA fallback: serve index.html
-        absolutePath = path.join(__dirname, 'index.html');
-      }
-      
-      const contentType = getContentType(absolutePath);
-      const stream = fs.createReadStream(absolutePath);
-      res.writeHead(200, { 'Content-Type': contentType });
-      stream.pipe(res);
-    });
-  }
-});
-
-// Start Server Listen
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`================================================================`);
-  console.log(` SITernak Dependency-free Database Server running successfully!`);
-  console.log(` - Port: ${PORT}`);
-  console.log(` - Local Access:   http://localhost:${PORT}`);
-  console.log(` - Network Access: http://<your-computer-ip-address>:${PORT}`);
-  console.log(`================================================================`);
-});
+// Export for Vercel Serverless wrapper compilation
+module.exports = app;
