@@ -137,6 +137,11 @@ ${appJs}
 
   fs.writeFileSync(xmlPath, xmlTemplate, 'utf8');
   console.log("Successfully compiled siternak-blogger-template.xml! 🐑🚀");
+
+  // Output standalone script block file to prevent chat truncation issues
+  const scriptContent = `//<![CDATA[\n${dataJs}\n\n${appJs}\n//]]>`;
+  fs.writeFileSync(path.join(__dirname, 'siternak-blogger-script-block.js'), scriptContent, 'utf8');
+  console.log("Successfully generated siternak-blogger-script-block.js! 📝🐑");
 } catch (err) {
   console.error("Compilation failed:", err.message);
   process.exit(1);

@@ -554,6 +554,9 @@ function renderDashboard(container) {
       bar.style.height = pct + "%";
     });
   }, 100);
+
+  // Sync dashboard sheep price card with live API data
+  window.updatePriceWidgets();
 }
 
 // ==========================================================================
@@ -2739,6 +2742,9 @@ window.renderSheepPrices = function(container) {
 
   window.filterSheepPricesTable();
 
+  // Sync sheep price cards with live API data
+  window.updatePriceWidgets();
+
   setTimeout(() => {
     window.renderPriceChart("hari");
   }, 100);
@@ -3155,4 +3161,42 @@ window.exportPricesToPDF = function() {
     </html>
   `);
   printWindow.document.close();
+};
+
+window.updatePriceWidgets = async function() {
+  try {
+    const baseUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      ? 'http://localhost:3000'
+      : 'https://bagusrejomulyo.vercel.app';
+      
+    const response = await fetch(baseUrl + '/api/harga-domba');
+    if (!response.ok) throw new Error("Gagal memuat harga terbaru");
+    const latest = await response.json();
+    if (latest) {
+      const javaVal = latest.harga_jawa || 0;
+      const nationalVal = latest.harga_nasional || 0;
+      const highVal = latest.harga_tertinggi || 0;
+      const lowVal = latest.harga_terendah || 0;
+      
+      const elJava = document.getElementById("price-card-java");
+      const elNat = document.getElementById("price-card-national");
+      const elHigh = document.getElementById("price-card-high");
+      const elLow = document.getElementById("price-card-low");
+      
+      if (elJava) elJava.textContent = formatRupiah(javaVal);
+      if (elNat) elNat.textContent = formatRupiah(nationalVal);
+      if (elHigh) elHigh.textContent = formatRupiah(highVal);
+      if (elLow) elLow.textContent = formatRupiah(lowVal);
+
+      const elDashboardPrice = document.getElementById("count-price");
+      if (elDashboardPrice) elDashboardPrice.textContent = formatRupiah(javaVal);
+      
+      const elDashboardMeta = document.getElementById("price-trend-meta");
+      if (elDashboardMeta) {
+        elDashboardMeta.innerHTML = `Nasional: ${formatRupiah(nationalVal)} | <span style="color: var(--text-muted); font-weight: 600;">■ 0.0%</span>`;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to fetch latest prices from server:", err.message);
+  }
 };

@@ -380,6 +380,19 @@ app.delete('/api/sheep-prices/:id', async (req, res) => {
   }
 });
 
+app.get('/api/harga-domba', async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM harga_domba_harian ORDER BY tanggal DESC LIMIT 1");
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Data harga domba belum tersedia." });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Failed to fetch latest sheep price:", err.message);
+    res.status(500).json({ message: "Gagal mengambil data harga domba dari database." });
+  }
+});
+
 app.post('/api/fetch-automated-prices', async (req, res) => {
   const todayStr = new Date().toISOString().split('T')[0];
   console.log("Triggered automated sheep prices fetching...");
