@@ -411,28 +411,25 @@ app.post('/api/sheep-prices', async (req, res) => {
   try {
     await ensureSchemaChecked();
 
-    if (hasIdColumn) {
+    const checkExist = await pool.query("SELECT * FROM harga_domba_harian WHERE tanggal = $1", [tanggal]);
+    if (checkExist.rows.length > 0) {
       await pool.query(`
-        INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (tanggal) DO UPDATE SET 
-          harga_jawa = EXCLUDED.harga_jawa,
-          harga_nasional = EXCLUDED.harga_nasional,
-          harga_tertinggi = EXCLUDED.harga_tertinggi,
-          harga_terendah = EXCLUDED.harga_terendah,
-          sumber = EXCLUDED.sumber
-      `, [entryId, tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+        UPDATE harga_domba_harian 
+        SET harga_jawa = $1, harga_nasional = $2, harga_tertinggi = $3, harga_terendah = $4, sumber = $5 
+        WHERE tanggal = $6
+      `, [cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber, tanggal]);
     } else {
-      await pool.query(`
-        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (tanggal) DO UPDATE SET 
-          harga_jawa = EXCLUDED.harga_jawa,
-          harga_nasional = EXCLUDED.harga_nasional,
-          harga_tertinggi = EXCLUDED.harga_tertinggi,
-          harga_terendah = EXCLUDED.harga_terendah,
-          sumber = EXCLUDED.sumber
-      `, [tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      if (hasIdColumn) {
+        await pool.query(`
+          INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [entryId, tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      } else {
+        await pool.query(`
+          INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      }
     }
 
     dbVersion = Date.now();
@@ -557,28 +554,27 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
   try {
     await ensureSchemaChecked();
 
-    if (hasIdColumn) {
+    const checkExist = await pool.query("SELECT * FROM harga_domba_harian WHERE tanggal = $1", [todayStr]);
+    if (checkExist.rows.length > 0) {
       await pool.query(`
-        INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (tanggal) DO UPDATE SET 
-          harga_jawa = EXCLUDED.harga_jawa,
-          harga_nasional = EXCLUDED.harga_nasional,
-          harga_tertinggi = EXCLUDED.harga_tertinggi,
-          harga_terendah = EXCLUDED.harga_terendah,
-          sumber = EXCLUDED.sumber
-      `, [entryId, todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+        UPDATE harga_domba_harian 
+        SET harga_jawa = $1, harga_nasional = $2, harga_tertinggi = $3, harga_terendah = $4, sumber = $5 
+        WHERE tanggal = $6
+      `, [cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber, todayStr]);
+      console.log(`Updated existing price record for ${todayStr}.`);
     } else {
-      await pool.query(`
-        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (tanggal) DO UPDATE SET 
-          harga_jawa = EXCLUDED.harga_jawa,
-          harga_nasional = EXCLUDED.harga_nasional,
-          harga_tertinggi = EXCLUDED.harga_tertinggi,
-          harga_terendah = EXCLUDED.harga_terendah,
-          sumber = EXCLUDED.sumber
-      `, [todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      if (hasIdColumn) {
+        await pool.query(`
+          INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [entryId, todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      } else {
+        await pool.query(`
+          INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      }
+      console.log(`Inserted new price record for ${todayStr}.`);
     }
     
     dbVersion = Date.now();
