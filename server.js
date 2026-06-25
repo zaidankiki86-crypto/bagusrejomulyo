@@ -438,7 +438,7 @@ app.post('/api/sheep-prices', async (req, res) => {
     dbVersion = Date.now();
     res.status(201).json({ success: true, id: entryId });
   } catch (err) {
-    console.error(err);
+    console.error("REAL_DATABASE_ERROR:", err);
     res.status(500).json({ message: "Gagal mencatat harga domba baru.", error: err.message });
   }
 });
@@ -598,7 +598,7 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
       }
     });
   } catch (dbWriteErr) {
-    console.error("Failed to write price record to DB:", dbWriteErr);
+    console.error("REAL_DATABASE_ERROR:", dbWriteErr);
     // Explicit 500 error reporting the exact database problem to frontend
     res.status(500).json({ 
       message: "Gagal menyimpan rekam harga otomatis ke database.", 
