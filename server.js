@@ -34,6 +34,25 @@ const pool = new Pool({
 // Global Sync Versioning Checker Variable
 let dbVersion = Date.now();
 
+// Lazy schema check to adapt dynamically if table does or doesn't have the 'id' column
+let hasIdColumn = null;
+
+async function ensureSchemaChecked() {
+  if (hasIdColumn !== null) return;
+  try {
+    const res = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'harga_domba_harian' AND column_name = 'id'
+    `);
+    hasIdColumn = res.rows.length > 0;
+    console.log("Schema check resolved: table 'harga_domba_harian' has 'id' column =", hasIdColumn);
+  } catch (err) {
+    console.warn("Could not verify schema for 'id' column, defaulting to false:", err.message);
+    hasIdColumn = false; // Safe default
+  }
+}
+
 // --------------------------------------------------------------------------
 // REST API ENDPOINTS
 // --------------------------------------------------------------------------
@@ -46,6 +65,8 @@ app.get('/api/sync-status', (req, res) => {
 // GET Batch Data (Populates client memory cache)
 app.get('/api/all-data', async (req, res) => {
   try {
+    await ensureSchemaChecked();
+    
     const membersResult = await pool.query("SELECT * FROM members");
     const transactionsResult = await pool.query("SELECT * FROM transactions");
     const activitiesResult = await pool.query("SELECT * FROM activities");
@@ -353,16 +374,32 @@ app.post('/api/sheep-prices', async (req, res) => {
   const entryId = id || "PRC-" + Date.now() + Math.floor(Math.random() * 100);
   
   try {
-    await pool.query(`
-      INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (tanggal) DO UPDATE SET 
-        harga_jawa = EXCLUDED.harga_jawa,
-        harga_nasional = EXCLUDED.harga_nasional,
-        harga_tertinggi = EXCLUDED.harga_tertinggi,
-        harga_terendah = EXCLUDED.harga_terendah,
-        sumber = EXCLUDED.sumber
-    `, [entryId, tanggal, hargaJawa, hargaNasional, hargaTertinggi, hargaTerendah, sumber]);
+    await ensureSchemaChecked();
+
+    if (hasIdColumn) {
+      await pool.query(`
+        INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (tanggal) DO UPDATE SET 
+          harga_jawa = EXCLUDED.harga_jawa,
+          harga_nasional = EXCLUDED.harga_nasional,
+          harga_tertinggi = EXCLUDED.harga_tertinggi,
+          harga_terendah = EXCLUDED.harga_terendah,
+          sumber = EXCLUDED.sumber
+      `, [entryId, tanggal, hargaJawa, hargaNasional, hargaTertinggi, hargaTerendah, sumber]);
+    } else {
+      await pool.query(`
+        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (tanggal) DO UPDATE SET 
+          harga_jawa = EXCLUDED.harga_jawa,
+          harga_nasional = EXCLUDED.harga_nasional,
+          harga_tertinggi = EXCLUDED.harga_tertinggi,
+          harga_terendah = EXCLUDED.harga_terendah,
+          sumber = EXCLUDED.sumber
+      `, [tanggal, hargaJawa, hargaNasional, hargaTertinggi, hargaTerendah, sumber]);
+    }
+
     dbVersion = Date.now();
     res.status(201).json({ success: true, id: entryId });
   } catch (err) {
@@ -374,7 +411,17 @@ app.post('/api/sheep-prices', async (req, res) => {
 app.delete('/api/sheep-prices/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query("DELETE FROM harga_domba_harian WHERE id = $1", [id]);
+    await ensureSchemaChecked();
+    
+    // Support delete either by id column, or using id value as date string (if no id column exists)
+    const isDate = /^\d{4}-\d{2}-\d{2}$/.test(id);
+    
+    if (!hasIdColumn || isDate) {
+      await pool.query("DELETE FROM harga_domba_harian WHERE tanggal = $1", [id]);
+    } else {
+      await pool.query("DELETE FROM harga_domba_harian WHERE id = $1", [id]);
+    }
+    
     dbVersion = Date.now();
     res.json({ success: true });
   } catch (err) {
@@ -468,16 +515,31 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
   const entryId = "PRC-" + Date.now() + (scrapingSuccess ? "-AUTO" : "-FB");
 
   try {
-    await pool.query(`
-      INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (tanggal) DO UPDATE SET 
-        harga_jawa = EXCLUDED.harga_jawa,
-        harga_nasional = EXCLUDED.harga_nasional,
-        harga_tertinggi = EXCLUDED.harga_tertinggi,
-        harga_terendah = EXCLUDED.harga_terendah,
-        sumber = EXCLUDED.sumber
-    `, [entryId, todayStr, baseJawa, baseNasional, baseHigh, baseLow, sumber]);
+    await ensureSchemaChecked();
+
+    if (hasIdColumn) {
+      await pool.query(`
+        INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (tanggal) DO UPDATE SET 
+          harga_jawa = EXCLUDED.harga_jawa,
+          harga_nasional = EXCLUDED.harga_nasional,
+          harga_tertinggi = EXCLUDED.harga_tertinggi,
+          harga_terendah = EXCLUDED.harga_terendah,
+          sumber = EXCLUDED.sumber
+      `, [entryId, todayStr, baseJawa, baseNasional, baseHigh, baseLow, sumber]);
+    } else {
+      await pool.query(`
+        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (tanggal) DO UPDATE SET 
+          harga_jawa = EXCLUDED.harga_jawa,
+          harga_nasional = EXCLUDED.harga_nasional,
+          harga_tertinggi = EXCLUDED.harga_tertinggi,
+          harga_terendah = EXCLUDED.harga_terendah,
+          sumber = EXCLUDED.sumber
+      `, [todayStr, baseJawa, baseNasional, baseHigh, baseLow, sumber]);
+    }
     
     dbVersion = Date.now();
     console.log(`Saved price record to database successfully. Sumber: ${sumber}`);
@@ -534,10 +596,18 @@ async function seedPrices() {
       let baseJawa = 54000;
       let baseNasional = 51000;
       
-      let query = "INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) VALUES ";
+      let query = "";
       const values = [];
       let valIdx = 1;
       
+      await ensureSchemaChecked();
+
+      if (hasIdColumn) {
+        query = "INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) VALUES ";
+      } else {
+        query = "INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) VALUES ";
+      }
+
       for (let i = numDays; i >= 0; i--) {
         const d = new Date(now);
         d.setDate(now.getDate() - i);
@@ -558,18 +628,27 @@ async function seedPrices() {
         const idStr = `PRC-SEED-${1000 + i}`;
         const sourceStr = "Sistem Otomatis";
         
-        values.push(idStr, dateStr, javaPrice, nasPrice, highPrice, lowPrice, sourceStr);
+        if (hasIdColumn) {
+          values.push(idStr, dateStr, javaPrice, nasPrice, highPrice, lowPrice, sourceStr);
+        } else {
+          values.push(dateStr, javaPrice, nasPrice, highPrice, lowPrice, sourceStr);
+        }
       }
       
       const valueStrings = [];
-      for (let i = 0; i < values.length; i += 7) {
-        valueStrings.push(`($${valIdx}, $${valIdx+1}, $${valIdx+2}, $${valIdx+3}, $${valIdx+4}, $${valIdx+5}, $${valIdx+6})`);
-        valIdx += 7;
+      const colsCount = hasIdColumn ? 7 : 6;
+      for (let i = 0; i < values.length; i += colsCount) {
+        if (hasIdColumn) {
+          valueStrings.push(`($${valIdx}, $${valIdx+1}, $${valIdx+2}, $${valIdx+3}, $${valIdx+4}, $${valIdx+5}, $${valIdx+6})`);
+        } else {
+          valueStrings.push(`($${valIdx}, $${valIdx+1}, $${valIdx+2}, $${valIdx+3}, $${valIdx+4}, $${valIdx+5})`);
+        }
+        valIdx += colsCount;
       }
       
       query += valueStrings.join(', ');
       await pool.query(query, values);
-      console.log(`Successfully seeded ${values.length / 7} daily price summary records.`);
+      console.log(`Successfully seeded ${values.length / colsCount} daily price summary records.`);
     } else {
       console.log(`Database already has ${count} daily price records. Skipping seed.`);
     }
@@ -585,16 +664,18 @@ app.get('*', (req, res) => {
 
 // Local Start Server Listener
 if (process.env.NODE_ENV !== 'production' && require.main === module) {
-  seedPrices().then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`================================================================`);
-      console.log(` SITernak PostgreSQL Database Local Server running successfully!`);
-      console.log(` - Port: ${PORT}`);
-      console.log(`================================================================`);
+  ensureSchemaChecked()
+    .then(() => seedPrices())
+    .then(() => {
+      app.listen(PORT, '0.0.0.0', () => {
+        console.log(`================================================================`);
+        console.log(` SITernak PostgreSQL Database Local Server running successfully!`);
+        console.log(` - Port: ${PORT}`);
+        console.log(`================================================================`);
+      });
     });
-  });
 } else {
-  seedPrices().catch(err => console.error("Prod seeding failed:", err));
+  ensureSchemaChecked().then(() => seedPrices()).catch(err => console.error("Prod seeding failed:", err));
 }
 
 // Export for Vercel Serverless wrapper compilation
