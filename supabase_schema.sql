@@ -3,6 +3,7 @@
 -- Paste this script directly inside the Supabase SQL Editor and execute.
 
 -- Disable foreign key checks temporarily to drop tables in correct order (optional)
+DROP TABLE IF EXISTS penjualan_domba CASCADE;
 DROP TABLE IF EXISTS activities CASCADE;
 DROP TABLE IF EXISTS harga_domba_harian CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
@@ -87,3 +88,17 @@ CREATE INDEX idx_livestock_owner ON livestock(owner_id);
 CREATE INDEX idx_growth_sheep ON growth_logs(sheep_id);
 CREATE INDEX idx_health_sheep ON health_logs(sheep_id);
 CREATE INDEX idx_harga_domba_tanggal ON harga_domba_harian(tanggal);
+
+-- 9. Sheep Sales Showcase Table
+CREATE TABLE penjualan_domba (
+    id SERIAL PRIMARY KEY,
+    tag_id VARCHAR(50) NOT NULL,
+    jenis_ras VARCHAR(100) NOT NULL,
+    bobot_kg NUMERIC NOT NULL,
+    harga NUMERIC NOT NULL,
+    whatsapp_penjual VARCHAR(50) NOT NULL,
+    status VARCHAR(50) DEFAULT 'Tersedia',
+    tanggal_posting DATE DEFAULT CURRENT_DATE
+);
+CREATE INDEX idx_penjualan_status ON penjualan_domba(status);
+

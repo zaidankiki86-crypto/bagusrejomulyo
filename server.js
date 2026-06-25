@@ -113,6 +113,15 @@ app.get('/api/all-data', async (req, res) => {
     } catch (priceErr) {
       console.warn("Failed to query harga_domba_harian table. Returning empty list.", priceErr.message);
     }
+
+    // Fetch available sheep sales listings
+    let sales = [];
+    try {
+      const salesResult = await pool.query("SELECT * FROM penjualan_domba WHERE status = 'Tersedia' ORDER BY tanggal_posting DESC");
+      sales = salesResult.rows;
+    } catch (salesErr) {
+      console.warn("Failed to query penjualan_domba table. Returning empty list.", salesErr.message);
+    }
     
     const members = membersResult.rows;
     const transactions = transactionsResult.rows;
@@ -167,7 +176,8 @@ app.get('/api/all-data', async (req, res) => {
       livestock,
       transactions,
       activities,
-      prices
+      prices,
+      sales
     });
   } catch (err) {
     console.error("Failed to load database batch data:", err);
@@ -462,6 +472,42 @@ app.delete('/api/sheep-prices/:id', async (req, res) => {
   }
 });
 
+// --------------------------------------------------------------------------
+// SHEEP SALES SHOWCASE CRUD
+// --------------------------------------------------------------------------
+app.post('/api/sales', async (req, res) => {
+  const { tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual } = req.body;
+  if (!tag_id || !jenis_ras || !bobot_kg || !harga || !whatsapp_penjual) {
+    return res.status(400).json({ message: "Data posting jualan domba tidak lengkap." });
+  }
+  const cleanBobot = parseFloat(bobot_kg);
+  const cleanHarga = sanitizePrice(harga);
+
+  try {
+    await pool.query(
+      "INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual) VALUES ($1, $2, $3, $4, $5)",
+      [tag_id, jenis_ras, cleanBobot, cleanHarga, whatsapp_penjual]
+    );
+    dbVersion = Date.now();
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error("REAL_DATABASE_ERROR in POST /api/sales:", err);
+    res.status(500).json({ message: "Gagal menyimpan posting penjualan domba.", error: err.message });
+  }
+});
+
+app.get('/api/sales', async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM penjualan_domba WHERE status = 'Tersedia' ORDER BY tanggal_posting DESC"
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("REAL_DATABASE_ERROR in GET /api/sales:", err);
+    res.status(500).json({ message: "Gagal mengambil data penjualan domba.", error: err.message });
+  }
+});
+
 app.get('/api/harga-domba', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM harga_domba_harian ORDER BY tanggal DESC LIMIT 1");
@@ -693,6 +739,41 @@ async function seedPrices() {
   }
 }
 
+async function seedSales() {
+  try {
+    const checkTable = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'penjualan_domba'
+      );
+    `);
+    
+    if (!checkTable.rows[0].exists) {
+      console.log("Table 'penjualan_domba' does not exist yet. Please run the schema first.");
+      return;
+    }
+    
+    const countResult = await pool.query("SELECT COUNT(*) FROM penjualan_domba");
+    const count = parseInt(countResult.rows[0].count, 10);
+    
+    if (count === 0) {
+      console.log("Seeding mock sales records...");
+      await pool.query(`
+        INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, status) VALUES
+        ('BM-001', 'Domba Merino', 45.5, 3500000, '081234567890', 'Tersedia'),
+        ('BM-002', 'Domba Texel', 52.0, 4200000, '082345678901', 'Tersedia'),
+        ('BM-003', 'Domba Garut', 48.2, 5000000, '081234567890', 'Tersedia')
+      `);
+      console.log("Successfully seeded mock sales records.");
+    } else {
+      console.log(`Database already has ${count} sales records. Skipping sales seed.`);
+    }
+  } catch (err) {
+    console.error("Error seeding sales records:", err);
+  }
+}
+
 // Fallback: Redirect all other routes to index.html for SPA router support
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -702,6 +783,7 @@ app.get('*', (req, res) => {
 if (process.env.NODE_ENV !== 'production' && require.main === module) {
   ensureSchemaChecked()
     .then(() => seedPrices())
+    .then(() => seedSales())
     .then(() => {
       app.listen(PORT, '0.0.0.0', () => {
         console.log(`================================================================`);
@@ -711,7 +793,7 @@ if (process.env.NODE_ENV !== 'production' && require.main === module) {
       });
     });
 } else {
-  ensureSchemaChecked().then(() => seedPrices()).catch(err => console.error("Prod seeding failed:", err));
+  ensureSchemaChecked().then(() => seedPrices()).then(() => seedSales()).catch(err => console.error("Prod seeding failed:", err));
 }
 
 // Export for Vercel Serverless wrapper compilation

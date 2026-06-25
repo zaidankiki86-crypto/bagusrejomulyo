@@ -1,19 +1,9 @@
-const fs = require('fs');
-const path = require('path');
+$styleCss = Get-Content -Raw -Encoding utf8 style.css
+$dataJs = Get-Content -Raw -Encoding utf8 data.js
+$appJs = Get-Content -Raw -Encoding utf8 app.js
 
-const stylePath = path.join(__dirname, 'style.css');
-const dataPath = path.join(__dirname, 'data.js');
-const appPath = path.join(__dirname, 'app.js');
-const xmlPath = path.join(__dirname, 'siternak-blogger-template.xml');
-
-try {
-  console.log("Reading source files...");
-  const styleCss = fs.readFileSync(stylePath, 'utf8');
-  const dataJs = fs.readFileSync(dataPath, 'utf8');
-  const appJs = fs.readFileSync(appPath, 'utf8');
-
-  console.log("Generating Blogger XML Template...");
-  const xmlTemplate = `<?xml version="1.0" encoding="UTF-8" ?>
+$xmlTemplate = @"
+<?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE html>
 <html b:css='false' b:js='true' html5='true' xmlns='http://www.w3.org/1999/xhtml' xmlns:b='http://www.google.com/2005/gml/b' xmlns:data='http://www.google.com/2005/gml/data' xmlns:expr='http://www.google.com/2005/gml/expr'>
 <head>
@@ -37,7 +27,7 @@ try {
   <!-- SITernak Custom CSS Stylesheet -->
   <style type='text/css'>
     /*<![CDATA[*/
-${styleCss}
+$styleCss
     /*]]>*/
   </style>
 </head>
@@ -127,22 +117,19 @@ ${styleCss}
   <!-- SITernak JS Engine (Combined data.js & app.js) -->
   <script type='text/javascript'>
     //<![CDATA[
-${dataJs}
+$dataJs
 
-${appJs}
+$appJs
     //]]>
   </script>
 </body>
-</html>`;
+</html>
+"@
 
-  fs.writeFileSync(xmlPath, xmlTemplate, 'utf8');
-  console.log("Successfully compiled siternak-blogger-template.xml! 🐑🚀");
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText("$(pwd)\siternak-blogger-template.xml", $xmlTemplate, $utf8NoBom)
+Write-Host "Successfully compiled siternak-blogger-template.xml!"
 
-  // Output standalone script block file to prevent chat truncation issues
-  const scriptContent = `//<![CDATA[\n${dataJs}\n\n${appJs}\n//]]>`;
-  fs.writeFileSync(path.join(__dirname, 'siternak-blogger-script-block.js'), scriptContent, 'utf8');
-  console.log("Successfully generated siternak-blogger-script-block.js! 📝🐑");
-} catch (err) {
-  console.error("Compilation failed:", err.message);
-  process.exit(1);
-}
+$scriptContent = "//<![CDATA[`n$dataJs`n`n$appJs`n//]]>"
+[System.IO.File]::WriteAllText("$(pwd)\siternak-blogger-script-block.js", $scriptContent, $utf8NoBom)
+Write-Host "Successfully generated siternak-blogger-script-block.js!"

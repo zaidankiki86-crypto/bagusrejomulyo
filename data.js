@@ -15,6 +15,7 @@ let cachedLivestock = [];
 let cachedTransactions = [];
 let cachedActivities = [];
 let cachedPrices = [];
+let cachedSales = [];
 let syncVersion = 0;
 let isServerConnected = true;
 
@@ -48,6 +49,7 @@ async function forceSync(targetVersion) {
     cachedTransactions = data.transactions;
     cachedActivities = data.activities;
     cachedPrices = data.prices || [];
+    cachedSales = data.sales || [];
     syncVersion = data.version;
     
     // Trigger current page refresh if a sync version increment occurred
@@ -164,6 +166,7 @@ window.Database = {
   getTransactions: () => cachedTransactions,
   getActivities: () => cachedActivities,
   getPrices: () => cachedPrices,
+  getSales: () => cachedSales,
   
   getLivestockByOwner: (ownerId) => {
     return cachedLivestock.filter(s => s.ownerId === ownerId);
@@ -262,6 +265,10 @@ window.Database = {
   },
   fetchAutomatedPrices: async () => {
     await apiRequest('/api/fetch-automated-prices', 'POST');
+    await forceSync();
+  },
+  addSale: async (sale) => {
+    await apiRequest('/api/sales', 'POST', sale);
     await forceSync();
   }
 };

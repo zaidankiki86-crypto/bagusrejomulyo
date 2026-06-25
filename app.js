@@ -2585,6 +2585,7 @@ window.renderPriceChart = function(timeframe = "hari") {
 window.renderSheepPrices = function(container) {
   const prices = window.Database.getPrices();
   const stats = calculateSheepPriceStats();
+  const sales = window.Database.getSales() || [];
 
   container.innerHTML = `
     <!-- Top Bar with Page Header & Action Buttons -->
@@ -2594,13 +2595,9 @@ window.renderSheepPrices = function(container) {
         <p class="page-subtitle" style="margin: 5px 0 0 0; color: var(--text-muted); font-size: 0.9rem;">Informasi perkembangan harga rata-rata domba per kilogram (Rp/kg) tingkat nasional & Pulau Jawa.</p>
       </div>
       <div style="display: flex; gap: 10px; align-items: center;">
-        <button class="btn btn-secondary btn-with-icon" onclick="triggerAutomatedFetch()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
+        <button class="btn btn-primary btn-with-icon" onclick="triggerAutomatedFetch()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
           <span class="icon">🔄</span>
           <span>Tarik Data Otomatis</span>
-        </button>
-        <button class="btn btn-primary btn-with-icon" onclick="showAddPriceForm()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
-          <span class="icon">➕</span>
-          <span>Entri Harga Baru</span>
         </button>
       </div>
     </div>
@@ -2713,6 +2710,53 @@ window.renderSheepPrices = function(container) {
             <!-- Dynamic price rows will be injected here -->
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Etalase Penjualan Domba Section -->
+    <div class="glass-card stagger-item stagger-5" style="margin-top: 2rem; padding: 1.5rem;">
+      <div class="section-title-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <h2 class="section-title" style="margin: 0; font-family: 'Outfit', sans-serif;"><span>🛍️</span> Etalase Penjualan Domba</h2>
+        <button class="btn btn-primary btn-with-icon" onclick="showAddSalesForm()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
+          <span class="icon">➕</span>
+          <span>Tambah Hewan Jual</span>
+        </button>
+      </div>
+      
+      <div class="sales-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 1rem;">
+        ${sales.length === 0 ? `
+          <div style="grid-column: 1/-1; text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+            <img src="assets/sheep_illustration.png" alt="Etalase Kosong" style="width: 120px; height: 120px; opacity: 0.6; margin-bottom: 1rem; object-fit: contain;">
+            <p style="margin: 0; font-weight: 500;">Belum ada domba yang ditawarkan di etalase saat ini.</p>
+            <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Klik "+ Tambah Hewan Jual" untuk memposting domba Anda.</p>
+          </div>
+        ` : sales.map(s => `
+          <div class="sales-card" style="background: var(--card-bg); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.25); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.08); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 1.25rem; transition: all 0.3s ease; display: flex; flex-direction: column; gap: 0.75rem; position: relative; overflow: hidden;">
+            <div style="position: relative; width: 100%; height: 180px; border-radius: 8px; overflow: hidden; background-color: rgba(0,0,0,0.05);">
+              <img src="assets/sheep_illustration.png" alt="${s.jenis_ras}" style="width: 100%; height: 100%; object-fit: cover;">
+              <span class="badge" style="position: absolute; top: 10px; left: 10px; background-color: var(--primary-color); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${s.tag_id}</span>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; flex-grow: 1;">
+              <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.15rem; font-weight: 600; color: var(--text-dark); margin: 0;">${s.jenis_ras}</h3>
+              
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-muted);">
+                <span>Bobot Estimasi:</span>
+                <span style="background-color: rgba(0, 0, 0, 0.05); padding: 2px 8px; border-radius: 4px; font-weight: 600; color: var(--text-dark);">${s.bobot_kg} kg</span>
+              </div>
+              
+              <div style="display: flex; flex-direction: column; margin-top: 0.5rem;">
+                <span style="font-size: 0.75rem; color: var(--text-muted);">Harga Jual:</span>
+                <span style="font-family: 'Outfit', sans-serif; font-size: 1.3rem; font-weight: 700; color: #10B981; margin: 0;">${formatRupiah(s.harga)}</span>
+              </div>
+            </div>
+            
+            <button class="btn btn-success" onclick="contactSellerWhatsApp('${s.whatsapp_penjual}', '${s.jenis_ras}', '${s.tag_id}', ${s.harga})" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Inter', sans-serif; background-color: #25D366; border: none; color: white; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">
+              <span class="icon">💬</span>
+              <span>Hubungi Penjual (WhatsApp)</span>
+            </button>
+          </div>
+        `).join('')}
       </div>
     </div>
   `;
@@ -2849,89 +2893,95 @@ window.triggerAutomatedFetch = async function() {
   }
 };
 
-window.showAddPriceForm = function() {
-  const today = new Date().toISOString().split('T')[0];
+window.showAddSalesForm = function() {
   const formHTML = `
-    <form id="price-form" onsubmit="savePriceForm(event)">
-      <div class="form-group">
-        <label class="form-label" for="price-date">Tanggal</label>
-        <input type="date" id="price-date" class="form-control" value="${today}" required>
+    <form id="sales-form" onsubmit="window.saveNewSale(event)">
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="sale-tag-id" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Tag ID / Kode Domba</label>
+        <input type="text" id="sale-tag-id" class="form-control" placeholder="Contoh: BM-061" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15);">
       </div>
-      <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-        <div>
-          <label class="form-label" for="price-jawa">Harga Rata-rata Jawa (Rp/kg)</label>
-          <input type="number" id="price-jawa" class="form-control" placeholder="Contoh: 54000" min="1000" required>
+      
+      <div class="form-group" style="margin-bottom: 1rem;">
+        <label for="sale-jenis-ras" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Jenis Ras Domba</label>
+        <select id="sale-jenis-ras" class="form-control" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15);">
+          <option value="">-- Pilih Jenis Ras --</option>
+          <option value="Domba Merino">Domba Merino</option>
+          <option value="Domba Texel">Domba Texel</option>
+          <option value="Domba Garut">Domba Garut</option>
+          <option value="Domba Gibas / Lokal">Domba Gibas / Lokal</option>
+          <option value="Domba Suffolk">Domba Suffolk</option>
+          <option value="Lainnya">Lainnya</option>
+        </select>
+      </div>
+
+      <div class="form-row" style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+        <div class="form-group" style="flex: 1;">
+          <label for="sale-bobot" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Perkiraan Bobot (kg)</label>
+          <input type="number" step="0.1" id="sale-bobot" class="form-control" placeholder="Contoh: 45" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15);">
         </div>
-        <div>
-          <label class="form-label" for="price-nasional">Harga Rata-rata Nasional (Rp/kg)</label>
-          <input type="number" id="price-nasional" class="form-control" placeholder="Contoh: 51000" min="1000" required>
+        <div class="form-group" style="flex: 1;">
+          <label for="sale-harga" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Harga Jual (Rp)</label>
+          <input type="number" id="sale-harga" class="form-control" placeholder="Contoh: 2500000" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15);">
         </div>
       </div>
-      <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-        <div>
-          <label class="form-label" for="price-tertinggi">Harga Tertinggi (Rp/kg)</label>
-          <input type="number" id="price-tertinggi" class="form-control" placeholder="Contoh: 60000" min="1000" required>
-        </div>
-        <div>
-          <label class="form-label" for="price-terendah">Harga Terendah (Rp/kg)</label>
-          <input type="number" id="price-terendah" class="form-control" placeholder="Contoh: 45000" min="1000" required>
-        </div>
+
+      <div class="form-group" style="margin-bottom: 1.5rem;">
+        <label for="sale-whatsapp" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Nomor WhatsApp Penjual</label>
+        <input type="text" id="sale-whatsapp" class="form-control" placeholder="Contoh: 081234567xxx" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15);">
       </div>
-      <div class="form-group">
-        <label class="form-label" for="price-sumber">Sumber Referensi / Nama Pencatat</label>
-        <input type="text" id="price-sumber" class="form-control" value="Entri Manual" placeholder="Contoh: Dinas Peternakan, Entri Manual, dll." required>
-      </div>
-      <div class="form-actions">
+
+      <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
         <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
-        <button type="submit" class="btn btn-primary">Simpan Entri</button>
+        <button type="submit" class="btn btn-primary">Posting Hewan</button>
       </div>
     </form>
   `;
-  openModal("Entri Summary Harga Harian", formHTML);
+  openModal("Tambah Hewan Jual", formHTML);
 };
 
-window.savePriceForm = async function(e) {
+window.saveNewSale = async function(e) {
   e.preventDefault();
-  const tanggal = document.getElementById("price-date").value;
-  const hargaJawa = parseInt(document.getElementById("price-jawa").value, 10);
-  const hargaNasional = parseInt(document.getElementById("price-nasional").value, 10);
-  const hargaTertinggi = parseInt(document.getElementById("price-tertinggi").value, 10);
-  const hargaTerendah = parseInt(document.getElementById("price-terendah").value, 10);
-  const sumber = document.getElementById("price-sumber").value;
-
-  if (!tanggal || !hargaJawa || !hargaNasional || !hargaTertinggi || !hargaTerendah || !sumber) {
-    showToast("Harap isi semua input form.", "danger");
-    return;
+  const submitBtn = e.target.querySelector("button[type='submit']");
+  const originalText = submitBtn ? submitBtn.innerHTML : "Posting Hewan";
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = "Memposting... ⏳";
   }
 
-  if (hargaTertinggi < hargaTerendah) {
-    showToast("Harga tertinggi tidak boleh kurang dari harga terendah.", "warning");
-    return;
-  }
+  const tag_id = document.getElementById("sale-tag-id").value.trim();
+  const jenis_ras = document.getElementById("sale-jenis-ras").value;
+  const bobot_kg = parseFloat(document.getElementById("sale-bobot").value);
+  const harga = parseInt(document.getElementById("sale-harga").value, 10);
+  const whatsapp_penjual = document.getElementById("sale-whatsapp").value.trim();
 
   try {
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Menyimpan...";
-
-    await window.Database.addPrice({
-      tanggal,
-      hargaJawa,
-      hargaNasional,
-      hargaTertinggi,
-      hargaTerendah,
-      sumber
-    });
+    await window.Database.addSale({ tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual });
     closeModal();
-    showToast("Entri summary harga berhasil disimpan! 📈", "success");
+    showToast(`Domba ${tag_id} berhasil diposting di etalase!`, "success");
     router();
   } catch (err) {
     console.error(err);
-    showToast(err.message || "Gagal mencatat harga domba.", "danger");
-    e.target.querySelector('button[type="submit"]').disabled = false;
-    e.target.querySelector('button[type="submit"]').textContent = "Simpan Entri";
+    showToast(err.message || "Gagal memposting domba.", "danger");
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
+    }
   }
 };
+
+window.contactSellerWhatsApp = function(whatsappNumber, breed, tagId, price) {
+  let cleanNumber = String(whatsappNumber).trim().replace(/[^0-9]/g, "");
+  if (cleanNumber.startsWith("0")) {
+    cleanNumber = "62" + cleanNumber.substring(1);
+  }
+  const formattedPrice = formatRupiah(price);
+  const message = `Halo, saya melihat domba ${breed} dengan ID ${tagId} seharga ${formattedPrice} di website SITernak Bagus Rejo Mulyo. Apakah domba tersebut masih tersedia?`;
+  const encodedMessage = encodeURIComponent(message);
+  const waUrl = `https://wa.me/${cleanNumber}?text=${encodedMessage}`;
+  window.open(waUrl, "_blank");
+};
+
 
 window.confirmDeletePrice = function(id) {
   const formHTML = `
