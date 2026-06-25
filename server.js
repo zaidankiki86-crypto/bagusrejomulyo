@@ -44,7 +44,6 @@ app.get('/api/sync-status', (req, res) => {
 app.get('/api/all-data', async (req, res) => {
   try {
     const membersResult = await pool.query("SELECT * FROM members");
-    const duesResult = await pool.query("SELECT * FROM dues");
     const transactionsResult = await pool.query("SELECT * FROM transactions");
     const activitiesResult = await pool.query("SELECT * FROM activities");
     
@@ -53,22 +52,12 @@ app.get('/api/all-data', async (req, res) => {
     const healthResult = await pool.query("SELECT * FROM health_logs");
     
     const members = membersResult.rows;
-    const duesRaw = duesResult.rows;
     const transactions = transactionsResult.rows;
     const activities = activitiesResult.rows;
     
     const livestockRaw = livestockResult.rows;
     const growthRaw = growthResult.rows;
     const healthRaw = healthResult.rows;
-    
-    // Map snake_case database results to camelCase expected by frontend
-    const dues = duesRaw.map(d => ({
-      memberId: d.member_id,
-      name: d.name,
-      duesPaid: d.dues_paid,
-      debtInstallment: d.debt_installment,
-      installmentPaid: d.installment_paid
-    }));
 
     const livestock = livestockRaw.map(s => {
       const growth = growthRaw
@@ -114,7 +103,6 @@ app.get('/api/all-data', async (req, res) => {
       members,
       livestock,
       transactions,
-      dues,
       activities
     });
   } catch (err) {
@@ -133,7 +121,6 @@ app.post('/api/members', async (req, res) => {
   }
   try {
     await pool.query("INSERT INTO members (id, name, role) VALUES ($1, $2, $3)", [id, name, role]);
-    await pool.query("INSERT INTO dues (member_id, name, dues_paid, debt_installment, installment_paid) VALUES ($1, $2, FALSE, 0, TRUE)", [id, name]);
     
     dbVersion = Date.now();
     res.status(201).json({ success: true });
@@ -148,7 +135,6 @@ app.put('/api/members/:id', async (req, res) => {
   const { name, role } = req.body;
   try {
     await pool.query("UPDATE members SET name = $1, role = $2 WHERE id = $3", [name, role, id]);
-    await pool.query("UPDATE dues SET name = $1 WHERE member_id = $2", [name, id]);
     
     dbVersion = Date.now();
     res.json({ success: true });
@@ -292,29 +278,6 @@ app.delete('/api/transactions/:id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Gagal menghapus transaksi kas." });
-  }
-});
-
-// --------------------------------------------------------------------------
-// DUES UPDATE
-// --------------------------------------------------------------------------
-app.put('/api/dues/:memberId', async (req, res) => {
-  const { memberId } = req.params;
-  const { field, val } = req.body;
-  
-  let dbField;
-  if (field === 'duesPaid') dbField = 'dues_paid';
-  else if (field === 'installmentPaid') dbField = 'installment_paid';
-  else return res.status(400).json({ message: "Field name tidak valid." });
-
-  try {
-    await pool.query(`UPDATE dues SET ${dbField} = $1 WHERE member_id = $2`, [val, memberId]);
-    
-    dbVersion = Date.now();
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Gagal memperbarui status iuran anggota." });
   }
 });
 

@@ -2003,7 +2003,6 @@ const API_URL = window.location.hostname === 'localhost' || window.location.host
 let cachedMembers = [];
 let cachedLivestock = [];
 let cachedTransactions = [];
-let cachedDues = [];
 let cachedActivities = [];
 let syncVersion = 0;
 let isServerConnected = true;
@@ -2036,7 +2035,6 @@ async function forceSync(targetVersion) {
     cachedMembers = data.members;
     cachedLivestock = data.livestock;
     cachedTransactions = data.transactions;
-    cachedDues = data.dues;
     cachedActivities = data.activities;
     syncVersion = data.version;
     
@@ -2152,7 +2150,6 @@ window.Database = {
   getMembers: () => cachedMembers,
   getLivestock: () => cachedLivestock,
   getTransactions: () => cachedTransactions,
-  getDues: () => cachedDues,
   getActivities: () => cachedActivities,
   
   getLivestockByOwner: (ownerId) => {
@@ -2225,11 +2222,6 @@ window.Database = {
   },
   deleteTransaction: async (id) => {
     await apiRequest(`/api/transactions/${id}`, 'DELETE');
-    await forceSync();
-  },
-  
-  updateDuesStatus: async (memberId, field, val) => {
-    await apiRequest(`/api/dues/${memberId}`, 'PUT', { field, val });
     await forceSync();
   },
   
@@ -2915,7 +2907,6 @@ function renderMemberProfile(container, memberId) {
   }
 
   const mySheep = window.Database.getLivestockByOwner(m.id);
-  const duesEntry = window.Database.getDues().find(d => d.memberId === m.id);
   const initial = m.name.split(' ').map(n => n[0]).slice(0, 2).join('');
 
   container.innerHTML = `
@@ -2933,9 +2924,6 @@ function renderMemberProfile(container, memberId) {
         <p style="opacity: 0.85; font-family: monospace; font-size: 0.85rem; margin-bottom: 8px;">ID Anggota: ${m.id}</p>
         <div class="profile-badges-row">
           <span class="badge role-${m.role.toLowerCase()}" style="background-color: white; color: var(--primary);">${m.role}</span>
-          <span class="badge" style="background-color: var(--primary-light); color: var(--primary);">
-            Iuran Wajib: ${duesEntry && duesEntry.duesPaid ? 'LUNAS (Lunas)' : 'TUNGGAK (Belum Bayar)'}
-          </span>
         </div>
       </div>
     </div>
@@ -3110,7 +3098,7 @@ window.confirmDeleteMember = function(id, name) {
   const formHTML = `
     <div style="margin-bottom: 1.25rem; text-align: center;">
       <p style="font-size: 1rem; color: var(--primary); margin-bottom: 6px;"><strong>Hapus Anggota Kelompok?</strong></p>
-      <p style="color: var(--text-muted); font-size: 0.88rem;">Apakah Anda yakin ingin menghapus <strong>${name}</strong>? Data iuran serta relasi dombanya akan terhapus.</p>
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Apakah Anda yakin ingin menghapus <strong>${name}</strong>? Data profil serta kepemilikan dombanya akan terhapus.</p>
     </div>
     <div class="form-actions" style="border: none; margin-top: 0; padding-top: 0;">
       <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
@@ -4046,7 +4034,6 @@ window.deleteHealthLog = async function(sheepId, logId) {
 // ==========================================================================
 function renderFinance(container) {
   const transactions = window.Database.getTransactions();
-  const dues = window.Database.getDues();
   const cashBalance = calculateCashBalance();
 
   const sortedTransactions = [...transactions].sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -4084,94 +4071,53 @@ function renderFinance(container) {
       </div>
     </div>
 
-    <!-- Layout Split -->
-    <div class="finance-split">
+    <!-- Ledger -->
+    <div class="glass-card stagger-item stagger-2" style="margin-top: 1.5rem;">
+      <div class="section-title-bar">
+        <h2 class="section-title"><span> Ledger </span> Jurnal Transaksi Keuangan</h2>
+        <button class="btn btn-primary btn-sm" onclick="showAddTransactionForm()">
+          <span>➕</span> Tambah Kas
+        </button>
+      </div>
       
-      <!-- Ledger -->
-      <div class="glass-card stagger-item stagger-2">
-        <div class="section-title-bar">
-          <h2 class="section-title"><span>📒</span> Jurnal Transaksi Keuangan</h2>
-          <button class="btn btn-primary btn-sm" onclick="showAddTransactionForm()">
-            <span>➕</span> Tambah Kas
-          </button>
+      ${sortedTransactions.length === 0 ? renderEmptyState("Belum ada transaksi kas kelompok. Klik tombol Tambah Kas untuk memulai.") : `
+        <div class="table-responsive">
+          <table class="custom-table responsive-table">
+            <thead>
+              <tr>
+                <th>Tanggal</th>
+                <th>Keterangan</th>
+                <th>Kategori</th>
+                <th style="text-align: right;">Nominal</th>
+                <th style="width: 50px; text-align: center;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sortedTransactions.map(t => {
+                const isPositive = t.category === "Income" || t.category === "Dues";
+                const catLabel = t.category === "Income" ? "Pemasukan" : t.category === "Expense" ? "Pengeluaran" : "Iuran";
+                return `
+                  <tr>
+                    <td data-label="Tanggal"><code>${formatDate(t.date)}</code></td>
+                    <td data-label="Keterangan"><strong>${t.description}</strong></td>
+                    <td data-label="Kategori"><span class="badge tx-${t.category.toLowerCase()}">${catLabel}</span></td>
+                    <td data-label="Nominal" style="text-align: right; font-weight: 700; color: ${isPositive ? 'var(--primary)' : 'var(--danger)'}">
+                      ${isPositive ? '+' : '-'} ${formatRupiah(t.amount)}
+                    </td>
+                    <td data-label="Aksi" style="text-align: center;">
+                      <div onclick="event.stopPropagation();">
+                        <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteTransaction('${t.id}')" title="Hapus Transaksi">🗑️</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
         </div>
-        
-        ${sortedTransactions.length === 0 ? renderEmptyState("Belum ada transaksi kas kelompok. Klik tombol Tambah Kas untuk memulai.") : `
-          <div class="table-responsive">
-            <table class="custom-table responsive-table">
-              <thead>
-                <tr>
-                  <th>Tanggal</th>
-                  <th>Keterangan</th>
-                  <th>Kategori</th>
-                  <th style="text-align: right;">Nominal</th>
-                  <th style="width: 50px; text-align: center;">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${sortedTransactions.map(t => {
-                  const isPositive = t.category === "Income" || t.category === "Dues";
-                  const catLabel = t.category === "Income" ? "Pemasukan" : t.category === "Expense" ? "Pengeluaran" : "Iuran";
-                  return `
-                    <tr>
-                      <td data-label="Tanggal"><code>${formatDate(t.date)}</code></td>
-                      <td data-label="Keterangan"><strong>${t.description}</strong></td>
-                      <td data-label="Kategori"><span class="badge tx-${t.category.toLowerCase()}">${catLabel}</span></td>
-                      <td data-label="Nominal" style="text-align: right; font-weight: 700; color: ${isPositive ? 'var(--primary)' : 'var(--danger)'}">
-                        ${isPositive ? '+' : '-'} ${formatRupiah(t.amount)}
-                      </td>
-                      <td data-label="Aksi" style="text-align: center;">
-                        <div onclick="event.stopPropagation();">
-                          <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteTransaction('${t.id}')" title="Hapus Transaksi">🗑️</button>
-                        </div>
-                      </td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
-          </div>
-        `}
-      </div>
-
-      <!-- Checklist Iuran -->
-      <div class="glass-card stagger-item stagger-3">
-        <div class="section-title-bar">
-          <h2 class="section-title"><span>💳</span> Pembayaran Iuran & Cicilan Anggota</h2>
-        </div>
-        <div class="dues-card-list">
-          ${dues.length === 0 ? `
-            <p style="text-align: center; color: var(--text-muted); padding: 2rem;">Belum ada iuran anggota. Registrasikan anggota kelompok terlebih dahulu.</p>
-          ` : dues.map(d => `
-            <div class="dues-item">
-              <div class="dues-member-info">
-                <span class="dues-member-name">${d.name}</span>
-                <span class="dues-debt-text">Cicilan: <strong>${d.debtInstallment > 0 ? formatRupiah(d.debtInstallment) : 'Bebas'}</strong></span>
-              </div>
-              <div class="dues-actions">
-                <div class="toggle-switch-wrapper">
-                  <span class="toggle-label">Iuran Wajib</span>
-                  <label class="switch">
-                    <input type="checkbox" ${d.duesPaid ? 'checked' : ''} onchange="toggleDuesStatus('${d.memberId}', 'duesPaid', this.checked, this)">
-                    <span class="slider"></span>
-                  </label>
-                </div>
-                ${d.debtInstallment > 0 ? `
-                  <div class="toggle-switch-wrapper">
-                    <span class="toggle-label">Cicilan</span>
-                    <label class="switch">
-                      <input type="checkbox" ${d.installmentPaid ? 'checked' : ''} onchange="toggleDuesStatus('${d.memberId}', 'installmentPaid', this.checked, this)">
-                      <span class="slider"></span>
-                    </label>
-                  </div>
-                ` : ''}
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
+      `}
     </div>
+
   `;
 
   // Animate financial statistics
@@ -4179,20 +4125,6 @@ function renderFinance(container) {
   animateCounter("f-income", incomeTotal, true);
   animateCounter("f-expense", expenseTotal, true);
 }
-
-window.toggleDuesStatus = async function(memberId, field, checked, inputEl) {
-  if (inputEl) inputEl.disabled = true;
-  try {
-    await window.Database.updateDuesStatus(memberId, field, checked);
-    showToast("Status iuran anggota diperbarui!");
-    router();
-  } catch (err) {
-    showToast(err.message || "Gagal memperbarui status iuran", "danger");
-    if (inputEl) inputEl.checked = !checked; // revert checkbox
-  } finally {
-    if (inputEl) inputEl.disabled = false;
-  }
-};
 
 window.showAddTransactionForm = function() {
   const today = new Date().toISOString().split('T')[0];

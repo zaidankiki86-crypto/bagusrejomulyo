@@ -13,7 +13,6 @@ const API_URL = window.location.hostname === 'localhost' || window.location.host
 let cachedMembers = [];
 let cachedLivestock = [];
 let cachedTransactions = [];
-let cachedDues = [];
 let cachedActivities = [];
 let syncVersion = 0;
 let isServerConnected = true;
@@ -46,7 +45,6 @@ async function forceSync(targetVersion) {
     cachedMembers = data.members;
     cachedLivestock = data.livestock;
     cachedTransactions = data.transactions;
-    cachedDues = data.dues;
     cachedActivities = data.activities;
     syncVersion = data.version;
     
@@ -162,7 +160,6 @@ window.Database = {
   getMembers: () => cachedMembers,
   getLivestock: () => cachedLivestock,
   getTransactions: () => cachedTransactions,
-  getDues: () => cachedDues,
   getActivities: () => cachedActivities,
   
   getLivestockByOwner: (ownerId) => {
@@ -235,11 +232,6 @@ window.Database = {
   },
   deleteTransaction: async (id) => {
     await apiRequest(`/api/transactions/${id}`, 'DELETE');
-    await forceSync();
-  },
-  
-  updateDuesStatus: async (memberId, field, val) => {
-    await apiRequest(`/api/dues/${memberId}`, 'PUT', { field, val });
     await forceSync();
   },
   

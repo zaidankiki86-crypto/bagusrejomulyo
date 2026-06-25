@@ -8,7 +8,6 @@ DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS health_logs CASCADE;
 DROP TABLE IF EXISTS growth_logs CASCADE;
 DROP TABLE IF EXISTS livestock CASCADE;
-DROP TABLE IF EXISTS dues CASCADE;
 DROP TABLE IF EXISTS members CASCADE;
 
 -- 1. Members Table
@@ -16,16 +15,6 @@ CREATE TABLE members (
     id VARCHAR(50) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL
-);
-
--- 2. Dues Checklist Table
-CREATE TABLE dues (
-    member_id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    dues_paid BOOLEAN DEFAULT FALSE,
-    debt_installment INTEGER DEFAULT 0,
-    installment_paid BOOLEAN DEFAULT TRUE,
-    CONSTRAINT fk_member FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE CASCADE
 );
 
 -- 3. Livestock Table
