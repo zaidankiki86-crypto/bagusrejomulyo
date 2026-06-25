@@ -20,9 +20,12 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Serve frontend static assets from the current directory (local testing)
 app.use(express.static(path.join(__dirname, '.')));
 
-// Initialize PostgreSQL Connection Pool
+// Initialize PostgreSQL Connection Pool optimized for Serverless environments (like Vercel)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 1, // Limit connections per serverless container to avoid Supabase pool exhaustion
+  idleTimeoutMillis: 10000, // Close idle connections quickly
+  connectionTimeoutMillis: 5000, // Time out fast if DB is unreachable
   ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost') ? {
     rejectUnauthorized: false
   } : false
@@ -117,7 +120,7 @@ app.get('/api/all-data', async (req, res) => {
     });
   } catch (err) {
     console.error("Failed to load database batch data:", err);
-    res.status(500).json({ message: "Gagal mengambil data dari database terpusat." });
+    res.status(500).json({ message: "Gagal mengambil data dari database terpusat.", error: err.message });
   }
 });
 
@@ -136,7 +139,7 @@ app.post('/api/members', async (req, res) => {
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal mendaftarkan anggota baru." });
+    res.status(500).json({ message: "Gagal mendaftarkan anggota baru.", error: err.message });
   }
 });
 
@@ -150,7 +153,7 @@ app.put('/api/members/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal memperbarui profil anggota." });
+    res.status(500).json({ message: "Gagal memperbarui profil anggota.", error: err.message });
   }
 });
 
@@ -165,7 +168,7 @@ app.delete('/api/members/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal menghapus data anggota." });
+    res.status(500).json({ message: "Gagal menghapus data anggota.", error: err.message });
   }
 });
 
@@ -184,7 +187,7 @@ app.post('/api/livestock', async (req, res) => {
     res.status(201).json({ id });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal mendaftarkan domba baru." });
+    res.status(500).json({ message: "Gagal mendaftarkan domba baru.", error: err.message });
   }
 });
 
@@ -198,7 +201,7 @@ app.put('/api/livestock/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal memperbarui data domba." });
+    res.status(500).json({ message: "Gagal memperbarui data domba.", error: err.message });
   }
 });
 
@@ -211,7 +214,7 @@ app.delete('/api/livestock/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal menghapus data domba." });
+    res.status(500).json({ message: "Gagal menghapus data domba.", error: err.message });
   }
 });
 
@@ -228,7 +231,7 @@ app.post('/api/livestock/:id/growth', async (req, res) => {
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal mencatat rekam perkembangan fisik." });
+    res.status(500).json({ message: "Gagal mencatat rekam perkembangan fisik.", error: err.message });
   }
 });
 
@@ -245,7 +248,7 @@ app.post('/api/livestock/:id/health', async (req, res) => {
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal mencatat rekam medis domba." });
+    res.status(500).json({ message: "Gagal mencatat rekam medis domba.", error: err.message });
   }
 });
 
@@ -258,7 +261,7 @@ app.delete('/api/livestock/:id/health/:logId', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal menghapus rekam medis." });
+    res.status(500).json({ message: "Gagal menghapus rekam medis.", error: err.message });
   }
 });
 
@@ -274,7 +277,7 @@ app.post('/api/transactions', async (req, res) => {
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal mencatat transaksi kas." });
+    res.status(500).json({ message: "Gagal mencatat transaksi kas.", error: err.message });
   }
 });
 
@@ -287,7 +290,7 @@ app.delete('/api/transactions/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal menghapus transaksi kas." });
+    res.status(500).json({ message: "Gagal menghapus transaksi kas.", error: err.message });
   }
 });
 
@@ -303,7 +306,7 @@ app.post('/api/activities', async (req, res) => {
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal mencatat kegiatan kelompok baru." });
+    res.status(500).json({ message: "Gagal mencatat kegiatan kelompok baru.", error: err.message });
   }
 });
 
@@ -321,7 +324,7 @@ app.put('/api/activities/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal memperbarui informasi kegiatan kelompok." });
+    res.status(500).json({ message: "Gagal memperbarui informasi kegiatan kelompok.", error: err.message });
   }
 });
 
@@ -334,7 +337,7 @@ app.delete('/api/activities/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal menghapus rekam kegiatan kelompok." });
+    res.status(500).json({ message: "Gagal menghapus rekam kegiatan kelompok.", error: err.message });
   }
 });
 
@@ -364,7 +367,7 @@ app.post('/api/sheep-prices', async (req, res) => {
     res.status(201).json({ success: true, id: entryId });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal mencatat harga domba baru." });
+    res.status(500).json({ message: "Gagal mencatat harga domba baru.", error: err.message });
   }
 });
 
@@ -376,7 +379,7 @@ app.delete('/api/sheep-prices/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Gagal menghapus rekam harga domba." });
+    res.status(500).json({ message: "Gagal menghapus rekam harga domba.", error: err.message });
   }
 });
 
@@ -389,7 +392,7 @@ app.get('/api/harga-domba', async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error("Failed to fetch latest sheep price:", err.message);
-    res.status(500).json({ message: "Gagal mengambil data harga domba dari database." });
+    res.status(500).json({ message: "Gagal mengambil data harga domba dari database.", error: err.message });
   }
 });
 
@@ -461,7 +464,7 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
     console.log("Using fallback pricing (Sistem Otomatis (Cadangan)):", { baseJawa, baseNasional, baseHigh, baseLow });
   }
 
-  // Insert or upsert the row into Supabase
+  // Insert or upsert the row into Supabase. Failures must return 500 error instead of false success!
   const entryId = "PRC-" + Date.now() + (scrapingSuccess ? "-AUTO" : "-FB");
 
   try {
@@ -478,23 +481,30 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
     
     dbVersion = Date.now();
     console.log(`Saved price record to database successfully. Sumber: ${sumber}`);
-  } catch (dbWriteErr) {
-    console.error("Failed to write price record to DB (table may not exist yet):", dbWriteErr.message);
-  }
 
-  // Always return success status (200 OK) to the frontend with the record data
-  res.status(200).json({ 
-    success: true, 
-    id: entryId,
-    record: {
-      tanggal: todayStr,
-      harga_jawa: baseJawa,
-      harga_nasional: baseNasional,
-      harga_tertinggi: baseHigh,
-      harga_terendah: baseLow,
-      sumber: sumber
-    }
-  });
+    // Return success response to the frontend
+    res.status(200).json({ 
+      success: true, 
+      id: entryId,
+      record: {
+        tanggal: todayStr,
+        harga_jawa: baseJawa,
+        harga_nasional: baseNasional,
+        harga_tertinggi: baseHigh,
+        harga_terendah: baseLow,
+        sumber: sumber
+      }
+    });
+  } catch (dbWriteErr) {
+    console.error("Failed to write price record to DB:", dbWriteErr);
+    // Explicit 500 error reporting the exact database problem to frontend
+    res.status(500).json({ 
+      message: "Gagal menyimpan rekam harga otomatis ke database.", 
+      error: dbWriteErr.message,
+      detail: dbWriteErr.detail || null,
+      code: dbWriteErr.code || null
+    });
+  }
 });
 
 async function seedPrices() {
