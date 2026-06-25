@@ -53,6 +53,36 @@ async function ensureSchemaChecked() {
   }
 }
 
+// Sanitizes input price values into clean integers
+function sanitizePrice(val) {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') return Math.round(val);
+  
+  let str = String(val).trim();
+  // Remove "Rp" prefix
+  str = str.replace(/^Rp\s*/i, "");
+  
+  // Indonesian thousands separator: "56.000" -> remove dot
+  if (str.includes('.') && !str.includes(',')) {
+    str = str.replace(/\./g, "");
+  } else if (str.includes(',') && str.includes('.')) {
+    if (str.indexOf(',') > str.indexOf('.')) {
+      str = str.split(',')[0].replace(/\./g, "");
+    } else {
+      str = str.split('.')[0].replace(/,/g, "");
+    }
+  } else if (str.includes(',')) {
+    if (str.split(',')[1].length === 3) {
+      str = str.replace(/,/g, "");
+    } else {
+      str = str.split(',')[0];
+    }
+  }
+  
+  const parsed = parseInt(str.replace(/[^0-9-]/g, ""), 10);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 // --------------------------------------------------------------------------
 // REST API ENDPOINTS
 // --------------------------------------------------------------------------
@@ -373,6 +403,11 @@ app.post('/api/sheep-prices', async (req, res) => {
   
   const entryId = id || "PRC-" + Date.now() + Math.floor(Math.random() * 100);
   
+  const cleanHargaJawa = sanitizePrice(hargaJawa);
+  const cleanHargaNasional = sanitizePrice(hargaNasional);
+  const cleanHargaTertinggi = sanitizePrice(hargaTertinggi);
+  const cleanHargaTerendah = sanitizePrice(hargaTerendah);
+  
   try {
     await ensureSchemaChecked();
 
@@ -386,7 +421,7 @@ app.post('/api/sheep-prices', async (req, res) => {
           harga_tertinggi = EXCLUDED.harga_tertinggi,
           harga_terendah = EXCLUDED.harga_terendah,
           sumber = EXCLUDED.sumber
-      `, [entryId, tanggal, hargaJawa, hargaNasional, hargaTertinggi, hargaTerendah, sumber]);
+      `, [entryId, tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
     } else {
       await pool.query(`
         INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
@@ -397,7 +432,7 @@ app.post('/api/sheep-prices', async (req, res) => {
           harga_tertinggi = EXCLUDED.harga_tertinggi,
           harga_terendah = EXCLUDED.harga_terendah,
           sumber = EXCLUDED.sumber
-      `, [tanggal, hargaJawa, hargaNasional, hargaTertinggi, hargaTerendah, sumber]);
+      `, [tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
     }
 
     dbVersion = Date.now();
@@ -514,6 +549,11 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
   // Insert or upsert the row into Supabase. Failures must return 500 error instead of false success!
   const entryId = "PRC-" + Date.now() + (scrapingSuccess ? "-AUTO" : "-FB");
 
+  const cleanHargaJawa = sanitizePrice(baseJawa);
+  const cleanHargaNasional = sanitizePrice(baseNasional);
+  const cleanHargaTertinggi = sanitizePrice(baseHigh);
+  const cleanHargaTerendah = sanitizePrice(baseLow);
+
   try {
     await ensureSchemaChecked();
 
@@ -527,7 +567,7 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
           harga_tertinggi = EXCLUDED.harga_tertinggi,
           harga_terendah = EXCLUDED.harga_terendah,
           sumber = EXCLUDED.sumber
-      `, [entryId, todayStr, baseJawa, baseNasional, baseHigh, baseLow, sumber]);
+      `, [entryId, todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
     } else {
       await pool.query(`
         INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
@@ -538,7 +578,7 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
           harga_tertinggi = EXCLUDED.harga_tertinggi,
           harga_terendah = EXCLUDED.harga_terendah,
           sumber = EXCLUDED.sumber
-      `, [todayStr, baseJawa, baseNasional, baseHigh, baseLow, sumber]);
+      `, [todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
     }
     
     dbVersion = Date.now();
