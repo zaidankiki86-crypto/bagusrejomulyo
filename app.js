@@ -57,11 +57,107 @@ function initApp() {
 function router() {
   const hash = window.location.hash || "#dashboard";
   const mainContent = document.getElementById("main-content");
+  if (!mainContent) {
+    console.error("Main content container '#main-content' not found in DOM.");
+    return;
+  }
   
-  // Tutup menu drawer di mobile jika terbuka
-  toggleMobileMenu(false);
-  
+  try {
+    // Tutup menu drawer di mobile jika terbuka
+    toggleMobileMenu(false);
+    
+    const [route, queryStr] = hash.split("?");
+    const query = {};
+    if (queryStr) {
+      queryStr.split("&").forEach(param => {
+        const [key, val] = param.split("=");
+        query[key] = decodeURIComponent(val);
+      });
+    }
+    
+    // Highlight Navigasi
+    renderNavigation(route);
+    
+    // Tampilkan Loading Skeleton
+    renderSkeleton(mainContent);
+    
+    // Simulasi loading asinkronus (wow factor transition)
+    setTimeout(() => {
+      try {
+        mainContent.innerHTML = ""; // Bersihkan skeleton
+        
+        // Rancang container halaman dengan animasi fade-in & slide-up
+        const pageContainer = document.createElement("div");
+        pageContainer.className = "stagger-container animate-page";
+        mainContent.appendChild(pageContainer);
+        
+        switch (route) {
+          case "#dashboard":
+            renderDashboard(pageContainer);
+            break;
+          case "#members":
+            renderMembers(pageContainer);
+            break;
+          case "#member-profile":
+            renderMemberProfile(pageContainer, query.id);
+            break;
+          case "#activities":
+            renderActivities(pageContainer);
+            break;
+          case "#sheep":
+            renderLivestock(pageContainer);
+            break;
+          case "#health":
+            renderHealthRecords(pageContainer);
+            break;
+          case "#sales-market":
+            renderSalesMarket(pageContainer);
+            break;
+          case "#sheep-prices":
+            renderSheepPrices(pageContainer);
+            break;
+          case "#finance":
+            renderFinance(pageContainer);
+            break;
+          default:
+            pageContainer.innerHTML = `
+              <div class="glass-card stagger-item stagger-1">
+                <h2>Halaman Tidak Ditemukan</h2>
+                <p>Halaman yang Anda tuju tidak tersedia.</p>
+              </div>
+            `;
+        }
+      } catch (renderErr) {
+        console.error("Error rendering route " + route + ":", renderErr);
+        mainContent.innerHTML = `
+          <div class="glass-card" style="border: 1px solid var(--danger); padding: 2rem; background: #ffffff; border-radius: var(--radius-md); box-shadow: var(--shadow-md);">
+            <h3 style="color: var(--danger); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px;">⚠️ Terjadi Kesalahan Tampilan</h3>
+            <p style="color: var(--text-main); margin-bottom: 1rem;">Gagal memuat halaman <strong>${route}</strong> karena kesalahan internal di JavaScript.</p>
+            <pre style="background: #f8fafc; padding: 1rem; border-radius: 6px; font-size: 0.85rem; overflow-x: auto; color: #dc2626; border: 1px solid #cbd5e1; font-family: monospace;">${renderErr.stack || renderErr.message}</pre>
+            <button class="btn btn-primary" onclick="window.location.reload()" style="margin-top: 1.25rem;">Muat Ulang Halaman</button>
+          </div>
+        `;
+      }
+    }, 350); // Transisi loading skeleton 350ms
+  } catch (routerErr) {
+    console.error("Router navigation error:", routerErr);
+  }
+}
+
+// Partial In-Place Refresh to update list grids without resetting inputs or showing full page loaders
+window.refreshActivePage = function() {
+  const hash = window.location.hash || "#dashboard";
   const [route, queryStr] = hash.split("?");
+  const mainContent = document.getElementById("main-content");
+  if (!mainContent) return;
+
+  const pageContainer = mainContent.querySelector(".stagger-container");
+  if (!pageContainer) {
+    // Fall back to full reload if page container is empty
+    router();
+    return;
+  }
+
   const query = {};
   if (queryStr) {
     queryStr.split("&").forEach(param => {
@@ -69,40 +165,46 @@ function router() {
       query[key] = decodeURIComponent(val);
     });
   }
-  
-  // Highlight Navigasi
-  renderNavigation(route);
-  
-  // Tampilkan Loading Skeleton
-  renderSkeleton(mainContent);
-  
-  // Simulasi loading asinkronus (wow factor transition)
-  setTimeout(() => {
-    mainContent.innerHTML = ""; // Bersihkan skeleton
-    
-    // Rancang container halaman dengan animasi fade-in & slide-up
-    const pageContainer = document.createElement("div");
-    pageContainer.className = "stagger-container animate-page";
-    mainContent.appendChild(pageContainer);
-    
+
+  try {
     switch (route) {
       case "#dashboard":
         renderDashboard(pageContainer);
         break;
       case "#members":
-        renderMembers(pageContainer);
+        const searchMember = document.getElementById("member-search");
+        if (searchMember && typeof filterMembersGrid === 'function') {
+          filterMembersGrid();
+        } else {
+          renderMembers(pageContainer);
+        }
         break;
       case "#member-profile":
         renderMemberProfile(pageContainer, query.id);
         break;
       case "#activities":
-        renderActivities(pageContainer);
+        const searchAct = document.getElementById("activity-search");
+        if (searchAct && typeof filterActivitiesGrid === 'function') {
+          filterActivitiesGrid();
+        } else {
+          renderActivities(pageContainer);
+        }
         break;
       case "#sheep":
-        renderLivestock(pageContainer);
+        const searchSheep = document.getElementById("sheep-search");
+        if (searchSheep && typeof filterLivestockTable === 'function') {
+          filterLivestockTable();
+        } else {
+          renderLivestock(pageContainer);
+        }
         break;
       case "#health":
-        renderHealthRecords(pageContainer);
+        const searchHealth = document.getElementById("health-search");
+        if (searchHealth && typeof filterHealthTable === 'function') {
+          filterHealthTable();
+        } else {
+          renderHealthRecords(pageContainer);
+        }
         break;
       case "#sales-market":
         renderSalesMarket(pageContainer);
@@ -113,16 +215,12 @@ function router() {
       case "#finance":
         renderFinance(pageContainer);
         break;
-      default:
-        pageContainer.innerHTML = `
-          <div class="glass-card stagger-item stagger-1">
-            <h2>Halaman Tidak Ditemukan</h2>
-            <p>Halaman yang Anda tuju tidak tersedia.</p>
-          </div>
-        `;
     }
-  }, 350); // Transisi loading skeleton 350ms
-}
+  } catch (refreshErr) {
+    console.warn("Partial refresh failed, falling back to full router reload:", refreshErr.message);
+    router();
+  }
+};
 
 // Mobile Hamburger Menu Drawer Manager
 window.toggleMobileMenu = function(forceState) {
@@ -2030,7 +2128,7 @@ window.deleteTransaction = async function(id) {
 // 7. GROUP ACTIVITIES MODULE
 // ==========================================================================
 function renderActivities(container) {
-  const activities = window.Database.getActivities();
+  const activities = window.Database.getActivities() || [];
   
   if (activities.length === 0) {
     container.innerHTML = `
@@ -2077,14 +2175,17 @@ function renderActivities(container) {
 }
 
 window.filterActivitiesGrid = function() {
-  const activities = window.Database.getActivities();
-  const searchVal = document.getElementById("activity-search").value.toLowerCase();
+  const activities = window.Database.getActivities() || [];
+  const searchEl = document.getElementById("activity-search");
+  const searchVal = searchEl ? searchEl.value.toLowerCase() : "";
   const gridContainer = document.getElementById("activities-grid-container");
+  if (!gridContainer) return;
 
-  const filtered = activities.filter(a => 
-    a.name.toLowerCase().includes(searchVal) || 
-    a.location.toLowerCase().includes(searchVal)
-  );
+  const filtered = activities.filter(a => {
+    const name = a.name ? String(a.name).toLowerCase() : "";
+    const location = a.location ? String(a.location).toLowerCase() : "";
+    return name.includes(searchVal) || location.includes(searchVal);
+  });
 
   if (filtered.length === 0) {
     gridContainer.innerHTML = `
@@ -2097,20 +2198,24 @@ window.filterActivitiesGrid = function() {
 
   gridContainer.innerHTML = filtered.map((a, index) => {
     const imageSrc = a.image || 'assets/sheep_illustration.png';
+    const nameStr = a.name || 'Kegiatan Kelompok';
+    const locationStr = a.location || 'Tidak Ada Lokasi';
+    const descStr = a.description || '';
+    
     return `
       <div class="activity-card stagger-item stagger-${(index % 5) + 1}" onclick="viewActivityDetail('${a.id}')">
         <div class="activity-img-wrapper">
-          <img src="${imageSrc}" class="activity-img" alt="${a.name}">
+          <img src="${imageSrc}" class="activity-img" alt="${nameStr}">
           <span class="activity-date-tag">${formatDate(a.date)}</span>
         </div>
         <div class="activity-info">
-          <h3 class="activity-name">${a.name}</h3>
-          <div class="activity-location">📍 ${a.location}</div>
-          <p class="activity-desc">${a.description || ''}</p>
+          <h3 class="activity-name">${nameStr}</h3>
+          <div class="activity-location">📍 ${locationStr}</div>
+          <p class="activity-desc">${descStr}</p>
           
           <div class="action-buttons" style="margin-top: auto; padding-top: 10px; display: flex; gap: 8px; justify-content: flex-end;" onclick="event.stopPropagation();">
             <button class="btn-icon-only btn-sm" onclick="showEditActivityForm('${a.id}')" title="Edit Kegiatan">✏️</button>
-            <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteActivity('${a.id}', '${a.name}')" title="Hapus Kegiatan">🗑️</button>
+            <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteActivity('${a.id}', '${nameStr}')" title="Hapus Kegiatan">🗑️</button>
           </div>
         </div>
       </div>
