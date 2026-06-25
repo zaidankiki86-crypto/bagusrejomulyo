@@ -1650,7 +1650,7 @@ input:checked + .slider:before {
   }
 
   .dashboard-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 
   .dashboard-sections {
@@ -1875,5 +1875,30 @@ input:checked + .slider:before {
   .activity-grid {
     grid-template-columns: repeat(3, 1fr);
   }
+}
+
+/* --------------------------------------------------------------------------
+   SHEEP PRICE MONITOR CUSTOM STYLES
+   -------------------------------------------------------------------------- */
+.btn-tab {
+  background: transparent;
+  border: none;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-tab:hover {
+  color: var(--text-dark);
+}
+
+.btn-tab.active {
+  background-color: var(--primary) !important;
+  color: white !important;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
 }
 

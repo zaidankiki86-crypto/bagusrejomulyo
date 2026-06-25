@@ -4,6 +4,7 @@
 
 -- Disable foreign key checks temporarily to drop tables in correct order (optional)
 DROP TABLE IF EXISTS activities CASCADE;
+DROP TABLE IF EXISTS harga_domba_harian CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS health_logs CASCADE;
 DROP TABLE IF EXISTS growth_logs CASCADE;
@@ -70,7 +71,19 @@ CREATE TABLE activities (
     image TEXT
 );
 
+-- 8. Daily Sheep Prices Summary Table
+CREATE TABLE harga_domba_harian (
+    id VARCHAR(50) PRIMARY KEY,
+    tanggal VARCHAR(50) NOT NULL UNIQUE,
+    harga_jawa INTEGER NOT NULL,
+    harga_nasional INTEGER NOT NULL,
+    harga_tertinggi INTEGER NOT NULL,
+    harga_terendah INTEGER NOT NULL,
+    sumber VARCHAR(100) NOT NULL
+);
+
 -- Enable row-level security or custom indices if needed (optional)
 CREATE INDEX idx_livestock_owner ON livestock(owner_id);
 CREATE INDEX idx_growth_sheep ON growth_logs(sheep_id);
 CREATE INDEX idx_health_sheep ON health_logs(sheep_id);
+CREATE INDEX idx_harga_domba_tanggal ON harga_domba_harian(tanggal);

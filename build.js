@@ -25,6 +25,9 @@ try {
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=Outfit:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+  
+  <!-- Chart.js CDN for Sheep Price Monitoring Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" type="text/javascript"></script>
 
   <!-- Blogger Skin CSS (Required by Blogger theme compiler) -->
   <b:skin><![CDATA[

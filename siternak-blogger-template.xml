@@ -10,6 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=Outfit:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+  
+  <!-- Chart.js CDN for Sheep Price Monitoring Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" type="text/javascript"></script>
 
   <!-- Blogger Skin CSS (Required by Blogger theme compiler) -->
   <b:skin><![CDATA[
@@ -1671,7 +1674,7 @@ input:checked + .slider:before {
   }
 
   .dashboard-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
   }
 
   .dashboard-sections {
@@ -1898,6 +1901,31 @@ input:checked + .slider:before {
   }
 }
 
+/* --------------------------------------------------------------------------
+   SHEEP PRICE MONITOR CUSTOM STYLES
+   -------------------------------------------------------------------------- */
+.btn-tab {
+  background: transparent;
+  border: none;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-tab:hover {
+  color: var(--text-dark);
+}
+
+.btn-tab.active {
+  background-color: var(--primary) !important;
+  color: white !important;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+}
+
 
     /*]]>*/
   </style>
@@ -2004,6 +2032,7 @@ let cachedMembers = [];
 let cachedLivestock = [];
 let cachedTransactions = [];
 let cachedActivities = [];
+let cachedPrices = [];
 let syncVersion = 0;
 let isServerConnected = true;
 
@@ -2036,6 +2065,7 @@ async function forceSync(targetVersion) {
     cachedLivestock = data.livestock;
     cachedTransactions = data.transactions;
     cachedActivities = data.activities;
+    cachedPrices = data.prices || [];
     syncVersion = data.version;
     
     // Trigger current page refresh if a sync version increment occurred
@@ -2151,6 +2181,7 @@ window.Database = {
   getLivestock: () => cachedLivestock,
   getTransactions: () => cachedTransactions,
   getActivities: () => cachedActivities,
+  getPrices: () => cachedPrices,
   
   getLivestockByOwner: (ownerId) => {
     return cachedLivestock.filter(s => s.ownerId === ownerId);
@@ -2236,6 +2267,19 @@ window.Database = {
   },
   deleteActivity: async (id) => {
     await apiRequest(`/api/activities/${id}`, 'DELETE');
+    await forceSync();
+  },
+  
+  addPrice: async (price) => {
+    await apiRequest('/api/sheep-prices', 'POST', price);
+    await forceSync();
+  },
+  deletePrice: async (id) => {
+    await apiRequest(`/api/sheep-prices/${id}`, 'DELETE');
+    await forceSync();
+  },
+  fetchAutomatedPrices: async () => {
+    await apiRequest('/api/fetch-automated-prices', 'POST');
     await forceSync();
   }
 };
@@ -2347,7 +2391,9 @@ function router() {
       case "#health":
         renderHealthRecords(pageContainer);
         break;
-
+      case "#sheep-prices":
+        renderSheepPrices(pageContainer);
+        break;
       case "#finance":
         renderFinance(pageContainer);
         break;
@@ -2558,7 +2604,8 @@ function renderNavigation(activeHash) {
     { hash: "#activities", label: "Kegiatan Kelompok", icon: "📅" },
     { hash: "#sheep", label: "Recording Domba", icon: "🐑" },
     { hash: "#health", label: "Rekam Medis", icon: "🩺" },
-    { hash: "#finance", label: "Laporan Keuangan", icon: "💰" }
+    { hash: "#finance", label: "Laporan Keuangan", icon: "💰" },
+    { hash: "#sheep-prices", label: "Harga Domba", icon: "📈" }
   ];
 
   sidebar.innerHTML = `
@@ -2594,6 +2641,7 @@ function renderDashboard(container) {
   const livestock = window.Database.getLivestock();
   const transactions = window.Database.getTransactions();
   const cashBalance = calculateCashBalance();
+  const priceStats = calculateSheepPriceStats();
   
   const jantanCount = livestock.filter(s => s.gender === "Jantan").length;
   const betinaCount = livestock.filter(s => s.gender === "Betina").length;
@@ -2697,6 +2745,15 @@ function renderDashboard(container) {
         </div>
         <div class="stat-icon-wrapper">💰</div>
       </div>
+
+      <div class="stat-card" style="cursor: pointer;" onclick="window.location.hash = '#sheep-prices'">
+        <div class="stat-info">
+          <span class="stat-label">Avg Harga Jawa (Rp/kg)</span>
+          <span class="stat-value" id="count-price">Rp0</span>
+          <span class="stat-meta" id="price-trend-meta">Nasional: Rp0 | -</span>
+        </div>
+        <div class="stat-icon-wrapper">📈</div>
+      </div>
     </div>
 
     <!-- Split Panel -->
@@ -2765,6 +2822,16 @@ function renderDashboard(container) {
   animateCounter("count-sheep", livestock.length);
   animateCounter("count-ratio", jantanCount, false, `🚹 / ${betinaCount}🚺`);
   animateCounter("count-balance", cashBalance, true);
+  animateCounter("count-price", Math.round(priceStats.javaAvg), true);
+
+  const trendIcon = priceStats.trend === "up" ? "▲" : priceStats.trend === "down" ? "▼" : "■";
+  const trendColor = priceStats.trend === "up" ? "#10B981" : priceStats.trend === "down" ? "#EF4444" : "var(--text-muted)";
+  const trendText = `${trendIcon} ${priceStats.javaChangePct.toFixed(1)}%`;
+  
+  const metaEl = document.getElementById("price-trend-meta");
+  if (metaEl) {
+    metaEl.innerHTML = `Nasional: ${formatRupiah(Math.round(priceStats.nationalAvg))} | <span style="color: ${trendColor}; font-weight: 600;">${trendText}</span>`;
+  }
 
   // Jalankan Animasi Chart Bouncing
   setTimeout(() => {
@@ -4566,6 +4633,815 @@ window.viewActivityDetail = function(id) {
     </div>
   `;
   openDetailModal(`Detail Kegiatan: ${act.name}`, detailHTML);
+};
+
+// ==========================================================================
+// 7. SHEEP PRICES MONITOR ("HARGA DOMBA")
+// ==========================================================================
+function calculateSheepPriceStats() {
+  const prices = window.Database.getPrices();
+  if (!prices || prices.length === 0) {
+    return {
+      latestDate: "-",
+      javaAvg: 0,
+      nationalAvg: 0,
+      javaChangePct: 0,
+      nationalChangePct: 0,
+      highPrice: 0,
+      lowPrice: 0,
+      trend: "stable",
+      latestRecord: null
+    };
+  }
+
+  const sorted = [...prices].sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
+  const latest = sorted[sorted.length - 1];
+  const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+
+  const javaAvg = latest.harga_jawa || 0;
+  const nationalAvg = latest.harga_nasional || 0;
+  const highPrice = latest.harga_tertinggi || 0;
+  const lowPrice = latest.harga_terendah || 0;
+
+  const prevJavaAvg = prev ? prev.harga_jawa : 0;
+  const prevNationalAvg = prev ? prev.harga_nasional : 0;
+
+  const javaChangePct = prevJavaAvg ? ((javaAvg - prevJavaAvg) / prevJavaAvg) * 100 : 0;
+  const nationalChangePct = prevNationalAvg ? ((nationalAvg - prevNationalAvg) / prevNationalAvg) * 100 : 0;
+
+  let trend = "stable";
+  if (javaChangePct > 0.1) {
+    trend = "up";
+  } else if (javaChangePct < -0.1) {
+    trend = "down";
+  }
+
+  return {
+    latestDate: latest.tanggal,
+    javaAvg,
+    nationalAvg,
+    javaChangePct,
+    nationalChangePct,
+    highPrice,
+    lowPrice,
+    trend,
+    latestRecord: latest
+  };
+}
+
+function getChartData(timeframe) {
+  const prices = window.Database.getPrices();
+  if (prices.length === 0) return { labels: [], datasets: [] };
+
+  const sorted = [...prices].sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
+  let targetRecords = [...sorted];
+  const now = new Date();
+
+  if (timeframe === "hari") {
+    targetRecords = sorted.filter(r => {
+      const diffTime = Math.abs(now - new Date(r.tanggal));
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays <= 15;
+    });
+  } else if (timeframe === "minggu") {
+    targetRecords = sorted.filter(r => {
+      const diffTime = Math.abs(now - new Date(r.tanggal));
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays <= 30;
+    });
+  } else if (timeframe === "bulan") {
+    targetRecords = sorted.filter(r => {
+      const diffTime = Math.abs(now - new Date(r.tanggal));
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays <= 90;
+    });
+  }
+
+  const colors = {
+    'jawa': '#3B82F6',
+    'nasional': '#10B981',
+    'tertinggi': '#F59E0B',
+    'terendah': '#EF4444'
+  };
+
+  const datasets = [
+    {
+      label: 'Rata-rata Jawa',
+      data: targetRecords.map(r => r.harga_jawa),
+      borderColor: colors['jawa'],
+      backgroundColor: colors['jawa'] + '10',
+      borderWidth: 2,
+      tension: 0.3,
+      fill: false
+    },
+    {
+      label: 'Rata-rata Nasional',
+      data: targetRecords.map(r => r.harga_nasional),
+      borderColor: colors['nasional'],
+      backgroundColor: colors['nasional'] + '10',
+      borderWidth: 2,
+      tension: 0.3,
+      fill: false
+    },
+    {
+      label: 'Harga Tertinggi',
+      data: targetRecords.map(r => r.harga_tertinggi),
+      borderColor: colors['tertinggi'],
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderDash: [5, 5],
+      tension: 0.3,
+      fill: false
+    },
+    {
+      label: 'Harga Terendah',
+      data: targetRecords.map(r => r.harga_terendah),
+      borderColor: colors['terendah'],
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderDash: [5, 5],
+      tension: 0.3,
+      fill: false
+    }
+  ];
+
+  const labels = targetRecords.map(r => {
+    const parts = r.tanggal.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+    return r.tanggal;
+  });
+
+  return { labels, datasets };
+}
+
+let priceChartInstance = null;
+
+window.renderPriceChart = function(timeframe = "hari") {
+  const canvas = document.getElementById('priceChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const chartData = getChartData(timeframe);
+
+  if (priceChartInstance) {
+    priceChartInstance.destroy();
+  }
+
+  priceChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chartData.labels,
+      datasets: chartData.datasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            usePointStyle: true,
+            boxWidth: 8,
+            font: {
+              family: 'Inter, sans-serif',
+              size: 11
+            }
+          }
+        },
+        tooltip: {
+          padding: 12,
+          bodySpacing: 6,
+          titleFont: {
+            family: 'Outfit, sans-serif',
+            weight: 'bold'
+          },
+          bodyFont: {
+            family: 'Inter, sans-serif'
+          },
+          callbacks: {
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (label) label += ': ';
+              if (context.parsed.y !== null) {
+                label += formatRupiah(context.parsed.y) + '/kg';
+              }
+              return label;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: {
+            display: false
+          },
+          ticks: {
+            font: {
+              family: 'Inter, sans-serif',
+              size: 10
+            }
+          }
+        },
+        y: {
+          ticks: {
+            callback: function(value) {
+              return 'Rp ' + (value / 1000) + 'k';
+            },
+            font: {
+              family: 'Inter, sans-serif',
+              size: 10
+            }
+          },
+          grid: {
+            color: 'rgba(0, 0, 0, 0.05)'
+          }
+        }
+      }
+    }
+  });
+};
+
+window.renderSheepPrices = function(container) {
+  const prices = window.Database.getPrices();
+  const stats = calculateSheepPriceStats();
+
+  container.innerHTML = `
+    <!-- Top Bar with Page Header & Action Buttons -->
+    <div class="page-header stagger-item stagger-1" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
+      <div class="header-text">
+        <h2 class="page-title" style="margin: 0; font-family: 'Outfit', sans-serif; font-size: 1.75rem; color: var(--text-dark);">📈 Pemantauan Harga Domba</h2>
+        <p class="page-subtitle" style="margin: 5px 0 0 0; color: var(--text-muted); font-size: 0.9rem;">Informasi perkembangan harga rata-rata domba per kilogram (Rp/kg) tingkat nasional & Pulau Jawa.</p>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button class="btn btn-secondary btn-with-icon" onclick="triggerAutomatedFetch()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
+          <span class="icon">🔄</span>
+          <span>Tarik Data Otomatis</span>
+        </button>
+        <button class="btn btn-primary btn-with-icon" onclick="showAddPriceForm()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
+          <span class="icon">➕</span>
+          <span>Entri Harga Baru</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Stat Cards Row -->
+    <div class="dashboard-grid stagger-item stagger-2" style="margin-bottom: 2rem;">
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Rata-rata Jawa</span>
+          <span class="stat-value" id="price-card-java">Rp0</span>
+          <span class="stat-meta" id="price-card-java-meta">-</span>
+        </div>
+        <div class="stat-icon-wrapper">🇮🇩</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Rata-rata Nasional</span>
+          <span class="stat-value" id="price-card-national">Rp0</span>
+          <span class="stat-meta" id="price-card-national-meta">-</span>
+        </div>
+        <div class="stat-icon-wrapper">🌏</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Harga Tertinggi</span>
+          <span class="stat-value" id="price-card-high">Rp0</span>
+          <span class="stat-meta">Rata-rata Harian Tertinggi</span>
+        </div>
+        <div class="stat-icon-wrapper font-bold" style="color: #10B981; font-weight: 700;">▲</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-info">
+          <span class="stat-label">Harga Terendah</span>
+          <span class="stat-value" id="price-card-low">Rp0</span>
+          <span class="stat-meta">Rata-rata Harian Terendah</span>
+        </div>
+        <div class="stat-icon-wrapper font-bold" style="color: #EF4444; font-weight: 700;">▼</div>
+      </div>
+    </div>
+
+    <!-- Interactive Line Chart Card -->
+    <div class="glass-card stagger-item stagger-3" style="margin-bottom: 2rem; padding: 1.5rem;">
+      <div class="section-title-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <h2 class="section-title" style="margin: 0; font-family: 'Outfit', sans-serif;"><span>📊</span> Tren Perkembangan Harga Domba</h2>
+        <div class="tab-buttons" style="display: flex; gap: 6px; background-color: rgba(0, 0, 0, 0.05); padding: 4px; border-radius: 8px;">
+          <button class="btn btn-sm btn-tab active" id="btn-tab-hari" onclick="switchPriceTab('hari')">Hari</button>
+          <button class="btn btn-sm btn-tab" id="btn-tab-minggu" onclick="switchPriceTab('minggu')">Minggu</button>
+          <button class="btn btn-sm btn-tab" id="btn-tab-bulan" onclick="switchPriceTab('bulan')">Bulan</button>
+          <button class="btn btn-sm btn-tab" id="btn-tab-tahun" onclick="switchPriceTab('tahun')">Tahun</button>
+        </div>
+      </div>
+      <div class="chart-container" style="position: relative; height: 350px; width: 100%;">
+        <canvas id="priceChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Historical Data Card -->
+    <div class="glass-card stagger-item stagger-4">
+      <div class="section-title-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <h2 class="section-title" style="margin: 0; font-family: 'Outfit', sans-serif;"><span>⏳</span> Riwayat Entri Harga Domba</h2>
+        <div class="export-buttons" style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary btn-sm btn-with-icon" onclick="exportPricesToExcel()" style="display: flex; align-items: center; gap: 6px;">
+            <span>📥</span> <span>Excel/CSV</span>
+          </button>
+          <button class="btn btn-secondary btn-sm btn-with-icon" onclick="exportPricesToPDF()" style="display: flex; align-items: center; gap: 6px;">
+            <span>🖨️</span> <span>Cetak PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters Row -->
+      <div class="filters-row" style="display: flex; gap: 12px; margin-bottom: 1.5rem; flex-wrap: wrap;">
+        <div class="filter-item" style="flex: 1; min-width: 200px;">
+          <input type="text" id="price-search-date" class="form-control" placeholder="Cari tanggal (YYYY-MM-DD)..." oninput="filterSheepPricesTable()">
+        </div>
+        <div class="filter-item" style="width: 150px; min-width: 120px;">
+          <select id="price-filter-period" class="form-control" onchange="filterSheepPricesTable()">
+            <option value="all">Semua Periode</option>
+            <option value="7">7 Hari Terakhir</option>
+            <option value="30">30 Hari Terakhir</option>
+          </select>
+        </div>
+        <div class="filter-item" style="width: 180px; min-width: 150px;">
+          <select id="price-filter-source" class="form-control" onchange="filterSheepPricesTable()">
+            <option value="all">Semua Sumber</option>
+            <option value="Sistem Otomatis">Sistem Otomatis</option>
+            <option value="manual">Entri Manual</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Table Container -->
+      <div class="table-container">
+        <table class="custom-table">
+          <thead>
+            <tr>
+              <th>Tanggal</th>
+              <th>Avg Jawa</th>
+              <th>Avg Nasional</th>
+              <th>Tertinggi</th>
+              <th>Terendah</th>
+              <th>Sumber</th>
+              <th style="width: 80px; text-align: center;">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="prices-table-body">
+            <!-- Dynamic price rows will be injected here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  animateCounter("price-card-java", Math.round(stats.javaAvg), true);
+  animateCounter("price-card-national", Math.round(stats.nationalAvg), true);
+  animateCounter("price-card-high", Math.round(stats.highPrice), true);
+  animateCounter("price-card-low", Math.round(stats.lowPrice), true);
+
+  const javaTrendIcon = stats.trend === "up" ? "▲" : stats.trend === "down" ? "▼" : "■";
+  const javaTrendColor = stats.trend === "up" ? "#10B981" : stats.trend === "down" ? "#EF4444" : "var(--text-muted)";
+  const javaTrendText = `${javaTrendIcon} ${stats.javaChangePct.toFixed(1)}% vs kemarin`;
+  
+  const javaMetaEl = document.getElementById("price-card-java-meta");
+  if (javaMetaEl) {
+    javaMetaEl.innerHTML = `<span style="color: ${javaTrendColor}; font-weight: 600;">${javaTrendText}</span>`;
+  }
+
+  const natChangeIcon = stats.nationalChangePct > 0.1 ? "▲" : stats.nationalChangePct < -0.1 ? "▼" : "■";
+  const natChangeColor = stats.nationalChangePct > 0.1 ? "#10B981" : stats.nationalChangePct < -0.1 ? "#EF4444" : "var(--text-muted)";
+  const natChangeText = `${natChangeIcon} ${stats.nationalChangePct.toFixed(1)}% vs kemarin`;
+  
+  const natMetaEl = document.getElementById("price-card-national-meta");
+  if (natMetaEl) {
+    natMetaEl.innerHTML = `<span style="color: ${natChangeColor}; font-weight: 600;">${natChangeText}</span>`;
+  }
+
+  window.filterSheepPricesTable();
+
+  setTimeout(() => {
+    window.renderPriceChart("hari");
+  }, 100);
+};
+
+window.switchPriceTab = function(timeframe) {
+  const tabs = ["hari", "minggu", "bulan", "tahun"];
+  tabs.forEach(t => {
+    const el = document.getElementById(`btn-tab-${t}`);
+    if (el) {
+      if (t === timeframe) {
+        el.classList.add("active");
+      } else {
+        el.classList.remove("active");
+      }
+    }
+  });
+
+  window.renderPriceChart(timeframe);
+};
+
+window.filterSheepPricesTable = function() {
+  const searchVal = document.getElementById("price-search-date").value;
+  const periodVal = document.getElementById("price-filter-period").value;
+  const sourceVal = document.getElementById("price-filter-source") ? document.getElementById("price-filter-source").value : "all";
+
+  const prices = window.Database.getPrices();
+  let filtered = [...prices];
+
+  if (sourceVal !== "all") {
+    if (sourceVal === "manual") {
+      filtered = filtered.filter(p => p.sumber !== "Sistem Otomatis");
+    } else {
+      filtered = filtered.filter(p => p.sumber === "Sistem Otomatis");
+    }
+  }
+
+  if (searchVal) {
+    filtered = filtered.filter(p => p.tanggal.includes(searchVal));
+  }
+
+  const now = new Date();
+  if (periodVal === "7") {
+    filtered = filtered.filter(p => {
+      const diffTime = Math.abs(now - new Date(p.tanggal));
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays <= 7;
+    });
+  } else if (periodVal === "30") {
+    filtered = filtered.filter(p => {
+      const diffTime = Math.abs(now - new Date(p.tanggal));
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays <= 30;
+    });
+  }
+
+  filtered.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+  const tbody = document.getElementById("prices-table-body");
+  if (!tbody) return;
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+          Tidak ada rekam harga yang cocok dengan filter.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(p => `
+    <tr>
+      <td data-label="Tanggal">${formatDate(p.tanggal)}</td>
+      <td data-label="Avg Jawa">${formatRupiah(p.harga_jawa)}/kg</td>
+      <td data-label="Avg Nasional">${formatRupiah(p.harga_nasional)}/kg</td>
+      <td data-label="Tertinggi" style="color: #10B981; font-weight: 500;">${formatRupiah(p.harga_tertinggi)}/kg</td>
+      <td data-label="Terendah" style="color: #EF4444; font-weight: 500;">${formatRupiah(p.harga_terendah)}/kg</td>
+      <td data-label="Sumber"><span class="badge" style="background-color: ${p.sumber === 'Sistem Otomatis' ? '#10B981' : '#6B7280'}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${p.sumber}</span></td>
+      <td data-label="Aksi" class="table-actions" style="text-align: center;">
+        <button class="btn btn-icon btn-danger" onclick="confirmDeletePrice('${p.id}')" title="Hapus">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+};
+
+window.triggerAutomatedFetch = async function() {
+  try {
+    const btn = document.querySelector('button[onclick="triggerAutomatedFetch()"]');
+    btn.disabled = true;
+    btn.innerHTML = `<span class="icon">⌛</span> <span>Menarik Data...</span>`;
+    
+    await window.Database.fetchAutomatedPrices();
+    
+    showToast("Berhasil menyinkronkan data harga otomatis! 📈", "success");
+    router();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || "Gagal menarik data harga otomatis.", "danger");
+    router();
+  }
+};
+
+window.showAddPriceForm = function() {
+  const today = new Date().toISOString().split('T')[0];
+  const formHTML = `
+    <form id="price-form" onsubmit="savePriceForm(event)">
+      <div class="form-group">
+        <label class="form-label" for="price-date">Tanggal</label>
+        <input type="date" id="price-date" class="form-control" value="${today}" required>
+      </div>
+      <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <label class="form-label" for="price-jawa">Harga Rata-rata Jawa (Rp/kg)</label>
+          <input type="number" id="price-jawa" class="form-control" placeholder="Contoh: 54000" min="1000" required>
+        </div>
+        <div>
+          <label class="form-label" for="price-nasional">Harga Rata-rata Nasional (Rp/kg)</label>
+          <input type="number" id="price-nasional" class="form-control" placeholder="Contoh: 51000" min="1000" required>
+        </div>
+      </div>
+      <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <label class="form-label" for="price-tertinggi">Harga Tertinggi (Rp/kg)</label>
+          <input type="number" id="price-tertinggi" class="form-control" placeholder="Contoh: 60000" min="1000" required>
+        </div>
+        <div>
+          <label class="form-label" for="price-terendah">Harga Terendah (Rp/kg)</label>
+          <input type="number" id="price-terendah" class="form-control" placeholder="Contoh: 45000" min="1000" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="price-sumber">Sumber Referensi / Nama Pencatat</label>
+        <input type="text" id="price-sumber" class="form-control" value="Entri Manual" placeholder="Contoh: Dinas Peternakan, Entri Manual, dll." required>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="submit" class="btn btn-primary">Simpan Entri</button>
+      </div>
+    </form>
+  `;
+  openModal("Entri Summary Harga Harian", formHTML);
+};
+
+window.savePriceForm = async function(e) {
+  e.preventDefault();
+  const tanggal = document.getElementById("price-date").value;
+  const hargaJawa = parseInt(document.getElementById("price-jawa").value, 10);
+  const hargaNasional = parseInt(document.getElementById("price-nasional").value, 10);
+  const hargaTertinggi = parseInt(document.getElementById("price-tertinggi").value, 10);
+  const hargaTerendah = parseInt(document.getElementById("price-terendah").value, 10);
+  const sumber = document.getElementById("price-sumber").value;
+
+  if (!tanggal || !hargaJawa || !hargaNasional || !hargaTertinggi || !hargaTerendah || !sumber) {
+    showToast("Harap isi semua input form.", "danger");
+    return;
+  }
+
+  if (hargaTertinggi < hargaTerendah) {
+    showToast("Harga tertinggi tidak boleh kurang dari harga terendah.", "warning");
+    return;
+  }
+
+  try {
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Menyimpan...";
+
+    await window.Database.addPrice({
+      tanggal,
+      hargaJawa,
+      hargaNasional,
+      hargaTertinggi,
+      hargaTerendah,
+      sumber
+    });
+    closeModal();
+    showToast("Entri summary harga berhasil disimpan! 📈", "success");
+    router();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || "Gagal mencatat harga domba.", "danger");
+    e.target.querySelector('button[type="submit"]').disabled = false;
+    e.target.querySelector('button[type="submit"]').textContent = "Simpan Entri";
+  }
+};
+
+window.confirmDeletePrice = function(id) {
+  const formHTML = `
+    <div style="padding: 1rem 0;">
+      <p style="margin-bottom: 1.5rem; color: var(--text-muted); font-size: 0.95rem;">Apakah Anda yakin ingin menghapus rekam harga domba ini? Tindakan ini tidak dapat dibatalkan.</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
+        <button type="button" class="btn btn-danger" onclick="deletePriceAction('${id}')">Hapus</button>
+      </div>
+    </div>
+  `;
+  openModal("Konfirmasi Hapus Harga", formHTML);
+};
+
+window.deletePriceAction = async function(id) {
+  try {
+    await window.Database.deletePrice(id);
+    closeModal();
+    showToast("Rekam harga domba berhasil dihapus.", "success");
+    router();
+  } catch (err) {
+    console.error(err);
+    showToast("Gagal menghapus rekam harga.", "danger");
+  }
+};
+
+window.exportPricesToExcel = function() {
+  const prices = window.Database.getPrices();
+  if (prices.length === 0) {
+    showToast("Tidak ada data untuk diekspor.", "warning");
+    return;
+  }
+
+  const sorted = [...prices].sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+  const headers = ["Tanggal", "Rata-rata Jawa (IDR)", "Rata-rata Nasional (IDR)", "Tertinggi (IDR)", "Terendah (IDR)", "Sumber"];
+  const rows = sorted.map(p => [
+    p.tanggal,
+    p.harga_jawa,
+    p.harga_nasional,
+    p.harga_tertinggi,
+    p.harga_terendah,
+    p.sumber
+  ]);
+
+  const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `harga_domba_brm_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast("File Excel/CSV berhasil diunduh!", "success");
+};
+
+window.exportPricesToPDF = function() {
+  const prices = window.Database.getPrices();
+  if (prices.length === 0) {
+    showToast("Tidak ada data untuk dicetak.", "warning");
+    return;
+  }
+
+  const sorted = [...prices].sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    showToast("Popup diblokir oleh browser. Harap izinkan popup.", "danger");
+    return;
+  }
+
+  const tableRows = sorted.map(p => `
+    <tr>
+      <td>${formatDate(p.tanggal)}</td>
+      <td class="price-col">${formatRupiah(p.harga_jawa)}/kg</td>
+      <td class="price-col">${formatRupiah(p.harga_nasional)}/kg</td>
+      <td style="color: #047857; font-weight: 600;">${formatRupiah(p.harga_tertinggi)}/kg</td>
+      <td style="color: #B91C1C; font-weight: 600;">${formatRupiah(p.harga_terendah)}/kg</td>
+      <td>${p.sumber}</td>
+    </tr>
+  `).join('');
+
+  const stats = calculateSheepPriceStats();
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>SITernak Bagus Rejo Mulyo - Laporan Harga Domba</title>
+        <style>
+          body {
+            font-family: 'Inter', 'Segoe UI', Helvetica, Arial, sans-serif;
+            color: #1F2937;
+            padding: 2rem;
+            line-height: 1.5;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #059669;
+            padding-bottom: 1.5rem;
+          }
+          .header h1 {
+            margin: 0;
+            color: #047857;
+            font-size: 1.8rem;
+            font-weight: 700;
+          }
+          .header p {
+            margin: 5px 0 0 0;
+            color: #6B7280;
+            font-size: 0.9rem;
+          }
+          .meta-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            font-size: 0.88rem;
+          }
+          .summary-box {
+            background-color: #F0FDF4;
+            border: 1px solid #BBF7D0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+          }
+          .summary-item {
+            text-align: center;
+          }
+          .summary-item .label {
+            font-size: 0.75rem;
+            color: #065F46;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+            display: block;
+          }
+          .summary-item .value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #047857;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+          }
+          th {
+            background-color: #059669;
+            color: white;
+            font-weight: 600;
+            text-align: left;
+            padding: 10px 12px;
+            font-size: 0.9rem;
+          }
+          td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #E5E7EB;
+            font-size: 0.88rem;
+          }
+          tr:nth-child(even) td {
+            background-color: #F9FAFB;
+          }
+          .price-col {
+            font-weight: 600;
+          }
+          @media print {
+            body {
+              padding: 0;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>SITernak Bagus Rejo Mulyo</h1>
+          <p>Laporan Pemantauan Harga Domba Kelompok Ternak</p>
+          <p style="font-size: 0.8rem; color: #9CA3AF;">Bagusan RT 02 RW 07, Sendangijo, Selogiri, Wonogiri, Jawa Tengah</p>
+        </div>
+        
+        <div class="meta-info">
+          <div>Dicetak Oleh: Sistem Informasi Kelompok Ternak</div>
+          <div>Tanggal Cetak: ${formatDate(new Date())}</div>
+        </div>
+
+        <div class="summary-box">
+          <div class="summary-item">
+            <span class="label">Rata-rata Jawa</span>
+            <span class="value">${formatRupiah(Math.round(stats.javaAvg))}/kg</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">Rata-rata Nasional</span>
+            <span class="value">${formatRupiah(Math.round(stats.nationalAvg))}/kg</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">Rekam Harga</span>
+            <span class="value">${prices.length} Entri</span>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Tanggal</th>
+              <th>Avg Jawa</th>
+              <th>Avg Nasional</th>
+              <th>Tertinggi</th>
+              <th>Terendah</th>
+              <th>Sumber</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+              window.close();
+            }, 500);
+          }
+        </script>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
 };
 
     //]]>
