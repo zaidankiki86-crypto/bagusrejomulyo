@@ -89,7 +89,7 @@ ${styleCss}
     <div class='modal-card'>
       <div class='modal-header'>
         <h3 id='modal-title'>Form Tambah</h3>
-        <button class='modal-close' onclick='closeModal()'>×</button>
+        <button class='modal-close' onclick='closeModal()'>X</button>
       </div>
       <div class='modal-body' id='modal-body-content'>
         <!-- Form injected dynamically -->
@@ -102,7 +102,7 @@ ${styleCss}
     <div class='modal-card modal-card-large'>
       <div class='modal-header'>
         <h3 id='detail-modal-title'>Detail Domba</h3>
-        <button class='modal-close' onclick='closeDetailModal()'>×</button>
+        <button class='modal-close' onclick='closeDetailModal()'>X</button>
       </div>
       <div class='modal-body' id='detail-modal-body-content'>
         <!-- Detail content with tabs injected dynamically -->

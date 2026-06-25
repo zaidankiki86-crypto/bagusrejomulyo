@@ -476,7 +476,7 @@ app.delete('/api/sheep-prices/:id', async (req, res) => {
 // SHEEP SALES SHOWCASE CRUD
 // --------------------------------------------------------------------------
 app.post('/api/sales', async (req, res) => {
-  const { tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual } = req.body;
+  const { tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, foto_url } = req.body;
   if (!tag_id || !jenis_ras || !bobot_kg || !harga || !whatsapp_penjual) {
     return res.status(400).json({ message: "Data posting jualan domba tidak lengkap." });
   }
@@ -485,8 +485,8 @@ app.post('/api/sales', async (req, res) => {
 
   try {
     await pool.query(
-      "INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual) VALUES ($1, $2, $3, $4, $5)",
-      [tag_id, jenis_ras, cleanBobot, cleanHarga, whatsapp_penjual]
+      "INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, foto_url) VALUES ($1, $2, $3, $4, $5, $6)",
+      [tag_id, jenis_ras, cleanBobot, cleanHarga, whatsapp_penjual, foto_url || null]
     );
     dbVersion = Date.now();
     res.status(201).json({ success: true });
@@ -760,10 +760,10 @@ async function seedSales() {
     if (count === 0) {
       console.log("Seeding mock sales records...");
       await pool.query(`
-        INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, status) VALUES
-        ('BM-001', 'Domba Merino', 45.5, 3500000, '081234567890', 'Tersedia'),
-        ('BM-002', 'Domba Texel', 52.0, 4200000, '082345678901', 'Tersedia'),
-        ('BM-003', 'Domba Garut', 48.2, 5000000, '081234567890', 'Tersedia')
+        INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, status, foto_url) VALUES
+        ('BM-001', 'Domba Merino', 45.5, 3500000, '081234567890', 'Tersedia', NULL),
+        ('BM-002', 'Domba Texel', 52.0, 4200000, '082345678901', 'Tersedia', NULL),
+        ('BM-003', 'Domba Garut', 48.2, 5000000, '081234567890', 'Tersedia', NULL)
       `);
       console.log("Successfully seeded mock sales records.");
     } else {

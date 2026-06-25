@@ -104,6 +104,9 @@ function router() {
       case "#health":
         renderHealthRecords(pageContainer);
         break;
+      case "#sales-market":
+        renderSalesMarket(pageContainer);
+        break;
       case "#sheep-prices":
         renderSheepPrices(pageContainer);
         break;
@@ -317,13 +320,14 @@ function renderNavigation(activeHash) {
     { hash: "#activities", label: "Kegiatan Kelompok", icon: "📅" },
     { hash: "#sheep", label: "Recording Domba", icon: "🐑" },
     { hash: "#health", label: "Rekam Medis", icon: "🩺" },
+    { hash: "#sales-market", label: "Penjualan Domba", icon: "🛍️" },
     { hash: "#finance", label: "Laporan Keuangan", icon: "💰" },
     { hash: "#sheep-prices", label: "Harga Domba", icon: "📈" }
   ];
 
   sidebar.innerHTML = `
     <div class="sidebar-header">
-      <span class="sidebar-logo">🐑</span>
+      <span class="sidebar-logo">&#128017;</span>
       <div class="sidebar-title">
         <h2>Bagus Rejo Mulyo</h2>
         <span>Informasi Kelompok</span>
@@ -2585,7 +2589,6 @@ window.renderPriceChart = function(timeframe = "hari") {
 window.renderSheepPrices = function(container) {
   const prices = window.Database.getPrices();
   const stats = calculateSheepPriceStats();
-  const sales = window.Database.getSales() || [];
 
   container.innerHTML = `
     <!-- Top Bar with Page Header & Action Buttons -->
@@ -2706,57 +2709,8 @@ window.renderSheepPrices = function(container) {
               <th style="width: 80px; text-align: center;">Aksi</th>
             </tr>
           </thead>
-          <tbody id="prices-table-body">
-            <!-- Dynamic price rows will be injected here -->
           </tbody>
         </table>
-      </div>
-    </div>
-
-    <!-- Etalase Penjualan Domba Section -->
-    <div class="glass-card stagger-item stagger-5" style="margin-top: 2rem; padding: 1.5rem;">
-      <div class="section-title-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
-        <h2 class="section-title" style="margin: 0; font-family: 'Outfit', sans-serif;"><span>🛍️</span> Etalase Penjualan Domba</h2>
-        <button class="btn btn-primary btn-with-icon" onclick="showAddSalesForm()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
-          <span class="icon">➕</span>
-          <span>Tambah Hewan Jual</span>
-        </button>
-      </div>
-      
-      <div class="sales-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 1rem;">
-        ${sales.length === 0 ? `
-          <div style="grid-column: 1/-1; text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
-            <img src="assets/sheep_illustration.png" alt="Etalase Kosong" style="width: 120px; height: 120px; opacity: 0.6; margin-bottom: 1rem; object-fit: contain;">
-            <p style="margin: 0; font-weight: 500;">Belum ada domba yang ditawarkan di etalase saat ini.</p>
-            <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Klik "+ Tambah Hewan Jual" untuk memposting domba Anda.</p>
-          </div>
-        ` : sales.map(s => `
-          <div class="sales-card" style="background: var(--card-bg); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.25); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.08); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 1.25rem; transition: all 0.3s ease; display: flex; flex-direction: column; gap: 0.75rem; position: relative; overflow: hidden;">
-            <div style="position: relative; width: 100%; height: 180px; border-radius: 8px; overflow: hidden; background-color: rgba(0,0,0,0.05);">
-              <img src="assets/sheep_illustration.png" alt="${s.jenis_ras}" style="width: 100%; height: 100%; object-fit: cover;">
-              <span class="badge" style="position: absolute; top: 10px; left: 10px; background-color: var(--primary-color); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${s.tag_id}</span>
-            </div>
-            
-            <div style="display: flex; flex-direction: column; gap: 0.5rem; flex-grow: 1;">
-              <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.15rem; font-weight: 600; color: var(--text-dark); margin: 0;">${s.jenis_ras}</h3>
-              
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-muted);">
-                <span>Bobot Estimasi:</span>
-                <span style="background-color: rgba(0, 0, 0, 0.05); padding: 2px 8px; border-radius: 4px; font-weight: 600; color: var(--text-dark);">${s.bobot_kg} kg</span>
-              </div>
-              
-              <div style="display: flex; flex-direction: column; margin-top: 0.5rem;">
-                <span style="font-size: 0.75rem; color: var(--text-muted);">Harga Jual:</span>
-                <span style="font-family: 'Outfit', sans-serif; font-size: 1.3rem; font-weight: 700; color: #10B981; margin: 0;">${formatRupiah(s.harga)}</span>
-              </div>
-            </div>
-            
-            <button class="btn btn-success" onclick="contactSellerWhatsApp('${s.whatsapp_penjual}', '${s.jenis_ras}', '${s.tag_id}', ${s.harga})" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Inter', sans-serif; background-color: #25D366; border: none; color: white; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">
-              <span class="icon">💬</span>
-              <span>Hubungi Penjual (WhatsApp)</span>
-            </button>
-          </div>
-        `).join('')}
       </div>
     </div>
   `;
@@ -2925,9 +2879,14 @@ window.showAddSalesForm = function() {
         </div>
       </div>
 
-      <div class="form-group" style="margin-bottom: 1.5rem;">
+      <div class="form-group" style="margin-bottom: 1rem;">
         <label for="sale-whatsapp" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Nomor WhatsApp Penjual</label>
         <input type="text" id="sale-whatsapp" class="form-control" placeholder="Contoh: 081234567xxx" required style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15);">
+      </div>
+
+      <div class="form-group" style="margin-bottom: 1.5rem;">
+        <label for="foto_domba" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Foto Domba (Maksimal 2MB)</label>
+        <input type="file" id="foto_domba" accept="image/*" class="form-control" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15);">
       </div>
 
       <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
@@ -2938,6 +2897,16 @@ window.showAddSalesForm = function() {
   `;
   openModal("Tambah Hewan Jual", formHTML);
 };
+
+// Helper function to read file as Base64 DataURL
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+}
 
 window.saveNewSale = async function(e) {
   e.preventDefault();
@@ -2954,8 +2923,19 @@ window.saveNewSale = async function(e) {
   const harga = parseInt(document.getElementById("sale-harga").value, 10);
   const whatsapp_penjual = document.getElementById("sale-whatsapp").value.trim();
 
+  const fotoInput = document.getElementById("foto_domba");
+  let foto_url = null;
+  if (fotoInput && fotoInput.files && fotoInput.files[0]) {
+    try {
+      foto_url = await fileToBase64(fotoInput.files[0]);
+    } catch (err) {
+      console.error("Failed to convert image to base64:", err);
+      showToast("Gagal memproses gambar. Menggunakan placeholder default.", "warning");
+    }
+  }
+
   try {
-    await window.Database.addSale({ tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual });
+    await window.Database.addSale({ tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, foto_url });
     closeModal();
     showToast(`Domba ${tag_id} berhasil diposting di etalase!`, "success");
     router();
@@ -2976,7 +2956,7 @@ window.contactSellerWhatsApp = function(whatsappNumber, breed, tagId, price) {
     cleanNumber = "62" + cleanNumber.substring(1);
   }
   const formattedPrice = formatRupiah(price);
-  const message = `Halo, saya melihat domba ${breed} dengan ID ${tagId} seharga ${formattedPrice} di website SITernak Bagus Rejo Mulyo. Apakah domba tersebut masih tersedia?`;
+  const message = `Halo, saya melihat domba ${breed} dengan ID ${tagId} seharga ${formattedPrice} di website SITernak Bagus Rejo Mulyo. Apakah masih tersedia?`;
   const encodedMessage = encodeURIComponent(message);
   const waUrl = `https://wa.me/${cleanNumber}?text=${encodedMessage}`;
   window.open(waUrl, "_blank");
@@ -3249,4 +3229,63 @@ window.updatePriceWidgets = async function() {
   } catch (err) {
     console.warn("Failed to fetch latest prices from server:", err.message);
   }
+};
+
+window.renderSalesMarket = function(container) {
+  const sales = window.Database.getSales() || [];
+
+  container.innerHTML = `
+    <!-- Top Bar with Page Header & Action Buttons -->
+    <div class="page-header stagger-item stagger-1" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
+      <div class="header-text">
+        <h2 class="page-title" style="margin: 0; font-family: 'Outfit', sans-serif; font-size: 1.75rem; color: var(--text-dark);">🛍️ Etalase Penjualan Domba</h2>
+        <p class="page-subtitle" style="margin: 5px 0 0 0; color: var(--text-muted); font-size: 0.9rem;">Etalase pemasaran domba kelompok. Hubungi penjual langsung via WhatsApp.</p>
+      </div>
+      <div>
+        <button class="btn btn-primary btn-with-icon" onclick="showAddSalesForm()" style="display: flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif;">
+          <span class="icon">➕</span>
+          <span>Tambah Hewan Jual</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Etalase Cards Grid -->
+    <div class="glass-card stagger-item stagger-2" style="padding: 1.5rem;">
+      <div class="sales-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem;">
+        ${sales.length === 0 ? `
+          <div style="grid-column: 1/-1; text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+            <img src="assets/sheep_illustration.png" alt="Etalase Kosong" style="width: 120px; height: 120px; opacity: 0.6; margin-bottom: 1rem; object-fit: contain;">
+            <p style="margin: 0; font-weight: 500;">Belum ada domba yang ditawarkan di etalase saat ini.</p>
+            <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Klik "+ Tambah Hewan Jual" untuk memposting domba Anda.</p>
+          </div>
+        ` : sales.map(s => `
+          <div class="sales-card" style="background: var(--card-bg); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.25); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.08); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 1.25rem; transition: all 0.3s ease; display: flex; flex-direction: column; gap: 0.75rem; position: relative; overflow: hidden;">
+            <div style="position: relative; width: 100%; height: 180px; border-radius: 8px; overflow: hidden; background-color: rgba(0,0,0,0.05);">
+              <img src="${s.foto_url || 'assets/sheep_illustration.png'}" alt="${s.jenis_ras}" style="width: 100%; height: 100%; object-fit: cover;">
+              <span class="badge" style="position: absolute; top: 10px; left: 10px; background-color: var(--primary-color); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;">${s.tag_id}</span>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; flex-grow: 1;">
+              <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.15rem; font-weight: 600; color: var(--text-dark); margin: 0;">${s.jenis_ras}</h3>
+              
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-muted);">
+                <span>Bobot Estimasi:</span>
+                <span style="background-color: rgba(0, 0, 0, 0.05); padding: 2px 8px; border-radius: 4px; font-weight: 600; color: var(--text-dark);">${s.bobot_kg} kg</span>
+              </div>
+              
+              <div style="display: flex; flex-direction: column; margin-top: 0.5rem;">
+                <span style="font-size: 0.75rem; color: var(--text-muted);">Harga Jual:</span>
+                <span style="font-family: 'Outfit', sans-serif; font-size: 1.3rem; font-weight: 700; color: #10B981; margin: 0;">${formatRupiah(s.harga)}</span>
+              </div>
+            </div>
+            
+            <button class="btn btn-success" onclick="contactSellerWhatsApp('${s.whatsapp_penjual}', '${s.jenis_ras}', '${s.tag_id}', ${s.harga})" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Inter', sans-serif; background-color: #25D366; border: none; color: white; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background-color 0.2s;">
+              <span class="icon">💬</span>
+              <span>Hubungi Penjual (WhatsApp)</span>
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 };

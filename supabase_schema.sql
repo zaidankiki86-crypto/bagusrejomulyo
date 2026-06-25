@@ -97,6 +97,7 @@ CREATE TABLE penjualan_domba (
     bobot_kg NUMERIC NOT NULL,
     harga NUMERIC NOT NULL,
     whatsapp_penjual VARCHAR(50) NOT NULL,
+    foto_url TEXT,
     status VARCHAR(50) DEFAULT 'Tersedia',
     tanggal_posting DATE DEFAULT CURRENT_DATE
 );
