@@ -36,20 +36,30 @@ let dbVersion = Date.now();
 
 // Lazy schema check to adapt dynamically if table does or doesn't have the 'id' column
 let hasIdColumn = null;
+let isIdInteger = false;
 
 async function ensureSchemaChecked() {
   if (hasIdColumn !== null) return;
   try {
     const res = await pool.query(`
-      SELECT column_name 
+      SELECT column_name, data_type 
       FROM information_schema.columns 
       WHERE table_name = 'harga_domba_harian' AND column_name = 'id'
     `);
-    hasIdColumn = res.rows.length > 0;
-    console.log("Schema check resolved: table 'harga_domba_harian' has 'id' column =", hasIdColumn);
+    if (res.rows.length > 0) {
+      hasIdColumn = true;
+      const type = String(res.rows[0].data_type).toLowerCase();
+      isIdInteger = type.includes('int') || type.includes('serial');
+      console.log(`Schema check resolved: table 'harga_domba_harian' has 'id' column of type '${type}' (isIdInteger = ${isIdInteger})`);
+    } else {
+      hasIdColumn = false;
+      isIdInteger = false;
+      console.log("Schema check resolved: table 'harga_domba_harian' does NOT have 'id' column");
+    }
   } catch (err) {
     console.warn("Could not verify schema for 'id' column, defaulting to false:", err.message);
     hasIdColumn = false; // Safe default
+    isIdInteger = false;
   }
 }
 
@@ -421,7 +431,7 @@ app.post('/api/sheep-prices', async (req, res) => {
   try {
     await ensureSchemaChecked();
 
-    if (hasIdColumn) {
+    if (hasIdColumn && !isIdInteger) {
       await pool.query(`
         INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
         VALUES ($1, $2, $3, $4, $5, $6, $7)
