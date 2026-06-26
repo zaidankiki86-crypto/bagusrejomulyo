@@ -277,5 +277,13 @@ window.Database = {
   addSale: async (sale) => {
     await apiRequest('/api/sales', 'POST', sale);
     await forceSync();
+  },
+  markSaleAsSold: async (id) => {
+    await apiRequest(`/api/sales/${id}/sold`, 'PUT');
+    await forceSync();
+  },
+  deleteSale: async (id) => {
+    await apiRequest(`/api/sales/${id}`, 'DELETE');
+    await forceSync();
   }
 };

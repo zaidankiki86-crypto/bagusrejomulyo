@@ -127,7 +127,7 @@ app.get('/api/all-data', async (req, res) => {
     // Fetch available sheep sales listings
     let sales = [];
     try {
-      const salesResult = await pool.query("SELECT * FROM penjualan_domba WHERE status = 'Tersedia' ORDER BY tanggal_posting DESC");
+      const salesResult = await pool.query("SELECT * FROM penjualan_domba ORDER BY CASE WHEN status = 'Tersedia' THEN 1 ELSE 2 END ASC, tanggal_posting DESC");
       sales = salesResult.rows;
     } catch (salesErr) {
       console.warn("Failed to query penjualan_domba table. Returning empty list.", salesErr.message);
@@ -483,8 +483,8 @@ app.delete('/api/sheep-prices/:id', async (req, res) => {
 // SHEEP SALES SHOWCASE CRUD
 // --------------------------------------------------------------------------
 app.post('/api/sales', async (req, res) => {
-  const { tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, foto_url } = req.body;
-  if (!tag_id || !jenis_ras || !bobot_kg || !harga || !whatsapp_penjual) {
+  const { tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, foto_url, nama_penjual } = req.body;
+  if (!tag_id || !jenis_ras || !bobot_kg || !harga || !whatsapp_penjual || !nama_penjual) {
     return res.status(400).json({ message: "Data posting jualan domba tidak lengkap." });
   }
   const cleanBobot = parseFloat(bobot_kg);
@@ -492,8 +492,8 @@ app.post('/api/sales', async (req, res) => {
 
   try {
     await pool.query(
-      "INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, foto_url) VALUES ($1, $2, $3, $4, $5, $6)",
-      [tag_id, jenis_ras, cleanBobot, cleanHarga, whatsapp_penjual, foto_url || null]
+      "INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, foto_url, nama_penjual) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [tag_id, jenis_ras, cleanBobot, cleanHarga, whatsapp_penjual, foto_url || null, nama_penjual]
     );
     dbVersion = Date.now();
     res.status(201).json({ success: true });
@@ -511,12 +511,36 @@ app.post('/api/sales', async (req, res) => {
 app.get('/api/sales', async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM penjualan_domba WHERE status = 'Tersedia' ORDER BY tanggal_posting DESC"
+      "SELECT * FROM penjualan_domba ORDER BY CASE WHEN status = 'Tersedia' THEN 1 ELSE 2 END ASC, tanggal_posting DESC"
     );
     res.json(result.rows);
   } catch (err) {
     console.error("REAL_DATABASE_ERROR in GET /api/sales:", err);
     res.status(500).json({ message: "Gagal mengambil data penjualan domba.", error: err.message });
+  }
+});
+
+app.put(['/api/sales/:id/status', '/api/sales/:id/sold'], async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("UPDATE penjualan_domba SET status = 'Terjual' WHERE id = $1", [id]);
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("SALES_STATUS_UPDATE_ERROR:", err);
+    res.status(500).json({ message: "Gagal memperbarui status penjualan.", error: err.message });
+  }
+});
+
+app.delete('/api/sales/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM penjualan_domba WHERE id = $1", [id]);
+    dbVersion = Date.now();
+    res.json({ success: true });
+  } catch (err) {
+    console.error("SALES_DELETE_ERROR:", err);
+    res.status(500).json({ message: "Gagal menghapus posting penjualan.", error: err.message });
   }
 });
 
@@ -751,10 +775,10 @@ async function seedSales() {
     if (count === 0) {
       console.log("Seeding mock sales records...");
       await pool.query(`
-        INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, status, foto_url) VALUES
-        ('BM-001', 'Domba Merino', 45.5, 3500000, '081234567890', 'Tersedia', NULL),
-        ('BM-002', 'Domba Texel', 52.0, 4200000, '082345678901', 'Tersedia', NULL),
-        ('BM-003', 'Domba Garut', 48.2, 5000000, '081234567890', 'Tersedia', NULL)
+        INSERT INTO penjualan_domba (tag_id, jenis_ras, bobot_kg, harga, whatsapp_penjual, status, foto_url, nama_penjual) VALUES
+        ('BM-001', 'Domba Merino', 45.5, 3500000, '081234567890', 'Tersedia', NULL, 'Pak Eko'),
+        ('BM-002', 'Domba Texel', 52.0, 4200000, '082345678901', 'Tersedia', NULL, 'Pak Joko'),
+        ('BM-003', 'Domba Garut', 48.2, 5000000, '081234567890', 'Tersedia', NULL, 'Pak Eko')
       `);
       console.log("Successfully seeded mock sales records.");
     } else {
