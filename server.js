@@ -491,8 +491,13 @@ app.post('/api/sales', async (req, res) => {
     dbVersion = Date.now();
     res.status(201).json({ success: true });
   } catch (err) {
-    console.error("REAL_DATABASE_ERROR in POST /api/sales:", err);
-    res.status(500).json({ message: "Gagal menyimpan posting penjualan domba.", error: err.message });
+    console.error("SALES_INSERT_ERROR:", err);
+    res.status(500).json({ 
+      message: "Gagal menyimpan posting penjualan domba.", 
+      error: err.message,
+      detail: err.detail || null,
+      code: err.code || null
+    });
   }
 });
 

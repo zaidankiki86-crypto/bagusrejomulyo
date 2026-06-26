@@ -1708,89 +1708,94 @@ input:checked + .slider:before {
 }
 
 .activity-card {
-  background: #ffffff;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  border: var(--glass-border);
-  box-shadow: var(--shadow-sm);
-  transition: var(--transition);
-  display: flex;
-  flex-direction: column;
-  animation: slideUp 0.4s ease-out;
-  cursor: pointer;
+  background: #ffffff !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden !important;
+  border: 1px solid #cbd5e1 !important; /* Solid, visible border */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+  transition: var(--transition) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  animation: slideUp 0.4s ease-out !important;
+  cursor: pointer !important;
 }
 
 .activity-card:hover {
-  transform: translateY(-6px) scale(1.01);
-  box-shadow: var(--shadow-md);
-  border-color: var(--primary);
+  transform: translateY(-6px) scale(1.01) !important;
+  box-shadow: 0 10px 25px rgba(6, 95, 70, 0.12) !important;
+  border-color: var(--primary) !important;
 }
 
 .activity-img-wrapper {
-  width: 100%;
-  height: 180px;
-  background-color: var(--secondary-light);
-  position: relative;
-  overflow: hidden;
-  border-bottom: 1px solid var(--border-color);
+  width: 100% !important;
+  height: 180px !important;
+  background-color: var(--secondary-light) !important;
+  position: relative !important;
+  overflow: hidden !important;
+  border-bottom: 1px solid #cbd5e1 !important;
 }
 
 .activity-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: var(--transition);
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  transition: var(--transition) !important;
 }
 
 .activity-card:hover .activity-img {
-  transform: scale(1.06);
+  transform: scale(1.06) !important;
 }
 
 .activity-date-tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background-color: var(--primary);
-  color: #ffffff;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  position: absolute !important;
+  top: 12px !important;
+  right: 12px !important;
+  background-color: #f7f5f0 !important; /* Soft cream background */
+  color: #1a202c !important; /* Stark dark grey date text */
+  padding: 4px 10px !important;
+  border-radius: 20px !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+  border: 1px solid #cbd5e1 !important;
 }
 
 .activity-info {
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
+  padding: 1.25rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  flex: 1 !important;
+  background-color: #ffffff !important; /* Solid background */
 }
 
-.activity-name {
-  font-size: 1.05rem;
-  font-weight: 750;
-  color: var(--primary);
-  line-height: 1.3;
+.activity-card .activity-name,
+.activity-card h3.activity-name {
+  font-size: 1.05rem !important;
+  font-weight: 750 !important;
+  color: #0f2d0f !important; /* Stark deep green title text */
+  line-height: 1.3 !important;
+  margin-top: 0 !important;
+  margin-bottom: 2px !important;
 }
 
-.activity-location {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 500;
+.activity-card .activity-location {
+  font-size: 0.8rem !important;
+  color: #1a202c !important; /* Stark dark grey location text */
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  font-weight: 500 !important;
 }
 
-.activity-desc {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  margin-top: 4px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.activity-card .activity-desc {
+  font-size: 0.82rem !important;
+  color: #1a202c !important; /* Stark dark grey description text */
+  margin-top: 4px !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
 }
 
 /* Empty State Illustration Layout */
@@ -2049,6 +2054,9 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     try {
       const errData = await response.json();
       errMsg = errData.message || errMsg;
+      if (errData.error) {
+        errMsg += ` (${errData.error})`;
+      }
     } catch(e) {}
     throw new Error(errMsg);
   }
@@ -2071,8 +2079,12 @@ async function forceSync(targetVersion) {
     syncVersion = data.version;
     
     // Trigger current page refresh if a sync version increment occurred
-    if (targetVersion && typeof router === 'function') {
-      router();
+    if (targetVersion) {
+      if (typeof window.refreshActivePage === 'function') {
+        window.refreshActivePage();
+      } else if (typeof router === 'function') {
+        router();
+      }
     }
   } catch (err) {
     console.error("forceSync failed:", err);
@@ -2351,11 +2363,107 @@ function initApp() {
 function router() {
   const hash = window.location.hash || "#dashboard";
   const mainContent = document.getElementById("main-content");
+  if (!mainContent) {
+    console.error("Main content container '#main-content' not found in DOM.");
+    return;
+  }
   
-  // Tutup menu drawer di mobile jika terbuka
-  toggleMobileMenu(false);
-  
+  try {
+    // Tutup menu drawer di mobile jika terbuka
+    toggleMobileMenu(false);
+    
+    const [route, queryStr] = hash.split("?");
+    const query = {};
+    if (queryStr) {
+      queryStr.split("&").forEach(param => {
+        const [key, val] = param.split("=");
+        query[key] = decodeURIComponent(val);
+      });
+    }
+    
+    // Highlight Navigasi
+    renderNavigation(route);
+    
+    // Tampilkan Loading Skeleton
+    renderSkeleton(mainContent);
+    
+    // Simulasi loading asinkronus (wow factor transition)
+    setTimeout(() => {
+      try {
+        mainContent.innerHTML = ""; // Bersihkan skeleton
+        
+        // Rancang container halaman dengan animasi fade-in & slide-up
+        const pageContainer = document.createElement("div");
+        pageContainer.className = "stagger-container animate-page";
+        mainContent.appendChild(pageContainer);
+        
+        switch (route) {
+          case "#dashboard":
+            renderDashboard(pageContainer);
+            break;
+          case "#members":
+            renderMembers(pageContainer);
+            break;
+          case "#member-profile":
+            renderMemberProfile(pageContainer, query.id);
+            break;
+          case "#activities":
+            renderActivities(pageContainer);
+            break;
+          case "#sheep":
+            renderLivestock(pageContainer);
+            break;
+          case "#health":
+            renderHealthRecords(pageContainer);
+            break;
+          case "#sales-market":
+            renderSalesMarket(pageContainer);
+            break;
+          case "#sheep-prices":
+            renderSheepPrices(pageContainer);
+            break;
+          case "#finance":
+            renderFinance(pageContainer);
+            break;
+          default:
+            pageContainer.innerHTML = `
+              <div class="glass-card stagger-item stagger-1">
+                <h2>Halaman Tidak Ditemukan</h2>
+                <p>Halaman yang Anda tuju tidak tersedia.</p>
+              </div>
+            `;
+        }
+      } catch (renderErr) {
+        console.error("Error rendering route " + route + ":", renderErr);
+        mainContent.innerHTML = `
+          <div class="glass-card" style="border: 1px solid var(--danger); padding: 2rem; background: #ffffff; border-radius: var(--radius-md); box-shadow: var(--shadow-md);">
+            <h3 style="color: var(--danger); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px;">⚠️ Terjadi Kesalahan Tampilan</h3>
+            <p style="color: var(--text-main); margin-bottom: 1rem;">Gagal memuat halaman <strong>${route}</strong> karena kesalahan internal di JavaScript.</p>
+            <pre style="background: #f8fafc; padding: 1rem; border-radius: 6px; font-size: 0.85rem; overflow-x: auto; color: #dc2626; border: 1px solid #cbd5e1; font-family: monospace;">${renderErr.stack || renderErr.message}</pre>
+            <button class="btn btn-primary" onclick="window.location.reload()" style="margin-top: 1.25rem;">Muat Ulang Halaman</button>
+          </div>
+        `;
+      }
+    }, 350); // Transisi loading skeleton 350ms
+  } catch (routerErr) {
+    console.error("Router navigation error:", routerErr);
+  }
+}
+
+// Partial In-Place Refresh to update list grids without resetting inputs or showing full page loaders
+window.refreshActivePage = function() {
+  const hash = window.location.hash || "#dashboard";
   const [route, queryStr] = hash.split("?");
+  const mainContent = document.getElementById("main-content");
+  if (!mainContent) return;
+
+  const pageContainer = mainContent.querySelector(".stagger-container");
+  if (!pageContainer) {
+    // Fall back to full reload if page container is empty
+    router();
+    return;
+  }
+
   const query = {};
   if (queryStr) {
     queryStr.split("&").forEach(param => {
@@ -2363,40 +2471,46 @@ function router() {
       query[key] = decodeURIComponent(val);
     });
   }
-  
-  // Highlight Navigasi
-  renderNavigation(route);
-  
-  // Tampilkan Loading Skeleton
-  renderSkeleton(mainContent);
-  
-  // Simulasi loading asinkronus (wow factor transition)
-  setTimeout(() => {
-    mainContent.innerHTML = ""; // Bersihkan skeleton
-    
-    // Rancang container halaman dengan animasi fade-in & slide-up
-    const pageContainer = document.createElement("div");
-    pageContainer.className = "stagger-container animate-page";
-    mainContent.appendChild(pageContainer);
-    
+
+  try {
     switch (route) {
       case "#dashboard":
         renderDashboard(pageContainer);
         break;
       case "#members":
-        renderMembers(pageContainer);
+        const searchMember = document.getElementById("member-search");
+        if (searchMember && typeof filterMembersGrid === 'function') {
+          filterMembersGrid();
+        } else {
+          renderMembers(pageContainer);
+        }
         break;
       case "#member-profile":
         renderMemberProfile(pageContainer, query.id);
         break;
       case "#activities":
-        renderActivities(pageContainer);
+        const searchAct = document.getElementById("activity-search");
+        if (searchAct && typeof filterActivitiesGrid === 'function') {
+          filterActivitiesGrid();
+        } else {
+          renderActivities(pageContainer);
+        }
         break;
       case "#sheep":
-        renderLivestock(pageContainer);
+        const searchSheep = document.getElementById("sheep-search");
+        if (searchSheep && typeof filterLivestockTable === 'function') {
+          filterLivestockTable();
+        } else {
+          renderLivestock(pageContainer);
+        }
         break;
       case "#health":
-        renderHealthRecords(pageContainer);
+        const searchHealth = document.getElementById("health-search");
+        if (searchHealth && typeof filterHealthTable === 'function') {
+          filterHealthTable();
+        } else {
+          renderHealthRecords(pageContainer);
+        }
         break;
       case "#sales-market":
         renderSalesMarket(pageContainer);
@@ -2407,16 +2521,12 @@ function router() {
       case "#finance":
         renderFinance(pageContainer);
         break;
-      default:
-        pageContainer.innerHTML = `
-          <div class="glass-card stagger-item stagger-1">
-            <h2>Halaman Tidak Ditemukan</h2>
-            <p>Halaman yang Anda tuju tidak tersedia.</p>
-          </div>
-        `;
     }
-  }, 350); // Transisi loading skeleton 350ms
-}
+  } catch (refreshErr) {
+    console.warn("Partial refresh failed, falling back to full router reload:", refreshErr.message);
+    router();
+  }
+};
 
 // Mobile Hamburger Menu Drawer Manager
 window.toggleMobileMenu = function(forceState) {
@@ -4324,7 +4434,7 @@ window.deleteTransaction = async function(id) {
 // 7. GROUP ACTIVITIES MODULE
 // ==========================================================================
 function renderActivities(container) {
-  const activities = window.Database.getActivities();
+  const activities = window.Database.getActivities() || [];
   
   if (activities.length === 0) {
     container.innerHTML = `
@@ -4371,14 +4481,17 @@ function renderActivities(container) {
 }
 
 window.filterActivitiesGrid = function() {
-  const activities = window.Database.getActivities();
-  const searchVal = document.getElementById("activity-search").value.toLowerCase();
+  const activities = window.Database.getActivities() || [];
+  const searchEl = document.getElementById("activity-search");
+  const searchVal = searchEl ? searchEl.value.toLowerCase() : "";
   const gridContainer = document.getElementById("activities-grid-container");
+  if (!gridContainer) return;
 
-  const filtered = activities.filter(a => 
-    a.name.toLowerCase().includes(searchVal) || 
-    a.location.toLowerCase().includes(searchVal)
-  );
+  const filtered = activities.filter(a => {
+    const name = a.name ? String(a.name).toLowerCase() : "";
+    const location = a.location ? String(a.location).toLowerCase() : "";
+    return name.includes(searchVal) || location.includes(searchVal);
+  });
 
   if (filtered.length === 0) {
     gridContainer.innerHTML = `
@@ -4391,20 +4504,24 @@ window.filterActivitiesGrid = function() {
 
   gridContainer.innerHTML = filtered.map((a, index) => {
     const imageSrc = a.image || 'assets/sheep_illustration.png';
+    const nameStr = a.name || 'Kegiatan Kelompok';
+    const locationStr = a.location || 'Tidak Ada Lokasi';
+    const descStr = a.description || '';
+    
     return `
       <div class="activity-card stagger-item stagger-${(index % 5) + 1}" onclick="viewActivityDetail('${a.id}')">
         <div class="activity-img-wrapper">
-          <img src="${imageSrc}" class="activity-img" alt="${a.name}">
+          <img src="${imageSrc}" class="activity-img" alt="${nameStr}">
           <span class="activity-date-tag">${formatDate(a.date)}</span>
         </div>
         <div class="activity-info">
-          <h3 class="activity-name">${a.name}</h3>
-          <div class="activity-location">📍 ${a.location}</div>
-          <p class="activity-desc">${a.description || ''}</p>
+          <h3 class="activity-name">${nameStr}</h3>
+          <div class="activity-location">📍 ${locationStr}</div>
+          <p class="activity-desc">${descStr}</p>
           
           <div class="action-buttons" style="margin-top: auto; padding-top: 10px; display: flex; gap: 8px; justify-content: flex-end;" onclick="event.stopPropagation();">
             <button class="btn-icon-only btn-sm" onclick="showEditActivityForm('${a.id}')" title="Edit Kegiatan">✏️</button>
-            <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteActivity('${a.id}', '${a.name}')" title="Hapus Kegiatan">🗑️</button>
+            <button class="btn-icon-only danger btn-sm" onclick="confirmDeleteActivity('${a.id}', '${nameStr}')" title="Hapus Kegiatan">🗑️</button>
           </div>
         </div>
       </div>

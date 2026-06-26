@@ -31,6 +31,9 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     try {
       const errData = await response.json();
       errMsg = errData.message || errMsg;
+      if (errData.error) {
+        errMsg += ` (${errData.error})`;
+      }
     } catch(e) {}
     throw new Error(errMsg);
   }
@@ -53,8 +56,12 @@ async function forceSync(targetVersion) {
     syncVersion = data.version;
     
     // Trigger current page refresh if a sync version increment occurred
-    if (targetVersion && typeof router === 'function') {
-      router();
+    if (targetVersion) {
+      if (typeof window.refreshActivePage === 'function') {
+        window.refreshActivePage();
+      } else if (typeof router === 'function') {
+        router();
+      }
     }
   } catch (err) {
     console.error("forceSync failed:", err);
