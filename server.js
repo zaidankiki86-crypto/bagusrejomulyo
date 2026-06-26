@@ -416,12 +416,10 @@ app.delete('/api/activities/:id', async (req, res) => {
 // SHEEP PRICES CRUD, AUTOMATION & SEEDING
 // --------------------------------------------------------------------------
 app.post('/api/sheep-prices', async (req, res) => {
-  const { id, tanggal, hargaJawa, hargaNasional, hargaTertinggi, hargaTerendah, sumber } = req.body;
+  const { tanggal, hargaJawa, hargaNasional, hargaTertinggi, hargaTerendah, sumber } = req.body;
   if (!tanggal || !hargaJawa || !hargaNasional || !hargaTertinggi || !hargaTerendah || !sumber) {
     return res.status(400).json({ message: "Data entri harga domba tidak lengkap." });
   }
-  
-  const entryId = id || "PRC-" + Date.now() + Math.floor(Math.random() * 100);
   
   const cleanHargaJawa = sanitizePrice(hargaJawa);
   const cleanHargaNasional = sanitizePrice(hargaNasional);
@@ -431,34 +429,23 @@ app.post('/api/sheep-prices', async (req, res) => {
   try {
     await ensureSchemaChecked();
 
-    if (hasIdColumn && !isIdInteger) {
-      await pool.query(`
-        INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (tanggal) 
-        DO UPDATE SET 
-           harga_jawa = EXCLUDED.harga_jawa,
-           harga_nasional = EXCLUDED.harga_nasional,
-           harga_tertinggi = EXCLUDED.harga_tertinggi,
-           harga_terendah = EXCLUDED.harga_terendah,
-           sumber = EXCLUDED.sumber
-      `, [entryId, tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
-    } else {
-      await pool.query(`
-        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (tanggal) 
-        DO UPDATE SET 
-           harga_jawa = EXCLUDED.harga_jawa,
-           harga_nasional = EXCLUDED.harga_nasional,
-           harga_tertinggi = EXCLUDED.harga_tertinggi,
-           harga_terendah = EXCLUDED.harga_terendah,
-           sumber = EXCLUDED.sumber
-      `, [tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
-    }
+    const result = await pool.query(`
+      INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (tanggal) 
+      DO UPDATE SET 
+         harga_jawa = EXCLUDED.harga_jawa,
+         harga_nasional = EXCLUDED.harga_nasional,
+         harga_tertinggi = EXCLUDED.harga_tertinggi,
+         harga_terendah = EXCLUDED.harga_terendah,
+         sumber = EXCLUDED.sumber
+      RETURNING *
+    `, [tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+
+    const finalId = result.rows[0]?.id || tanggal;
 
     dbVersion = Date.now();
-    res.status(201).json({ success: true, id: entryId });
+    res.status(201).json({ success: true, id: finalId });
   } catch (err) {
     console.error("REAL_DATABASE_ERROR:", err);
     res.status(500).json({ message: "Gagal mencatat harga domba baru.", error: err.message });
@@ -609,9 +596,6 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
     console.log("Using fallback pricing (Sistem Otomatis (Cadangan)):", { baseJawa, baseNasional, baseHigh, baseLow });
   }
 
-  // Insert or upsert the row into Supabase. Failures must return 500 error instead of false success!
-  const entryId = "PRC-" + Date.now() + (scrapingSuccess ? "-AUTO" : "-FB");
-
   const cleanHargaJawa = sanitizePrice(baseJawa);
   const cleanHargaNasional = sanitizePrice(baseNasional);
   const cleanHargaTertinggi = sanitizePrice(baseHigh);
@@ -620,39 +604,27 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
   try {
     await ensureSchemaChecked();
 
-    if (hasIdColumn) {
-      await pool.query(`
-        INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (tanggal) 
-        DO UPDATE SET 
-           harga_jawa = EXCLUDED.harga_jawa,
-           harga_nasional = EXCLUDED.harga_nasional,
-           harga_tertinggi = EXCLUDED.harga_tertinggi,
-           harga_terendah = EXCLUDED.harga_terendah,
-           sumber = EXCLUDED.sumber
-      `, [entryId, todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
-    } else {
-      await pool.query(`
-        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (tanggal) 
-        DO UPDATE SET 
-           harga_jawa = EXCLUDED.harga_jawa,
-           harga_nasional = EXCLUDED.harga_nasional,
-           harga_tertinggi = EXCLUDED.harga_tertinggi,
-           harga_terendah = EXCLUDED.harga_terendah,
-           sumber = EXCLUDED.sumber
-      `, [todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
-    }
+    const queryResult = await pool.query(`
+      INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (tanggal) 
+      DO UPDATE SET 
+         harga_jawa = EXCLUDED.harga_jawa,
+         harga_nasional = EXCLUDED.harga_nasional,
+         harga_tertinggi = EXCLUDED.harga_tertinggi,
+         harga_terendah = EXCLUDED.harga_terendah,
+         sumber = EXCLUDED.sumber
+      RETURNING *
+    `, [todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
     
+    const finalId = queryResult.rows[0]?.id || todayStr;
     dbVersion = Date.now();
     console.log(`Saved price record to database successfully via UPSERT. Sumber: ${sumber}`);
 
     // Return success response to the frontend
     res.status(200).json({ 
       success: true, 
-      id: entryId,
+      id: finalId,
       record: {
         tanggal: todayStr,
         harga_jawa: baseJawa,
@@ -701,17 +673,11 @@ async function seedPrices() {
       let baseJawa = 54000;
       let baseNasional = 51000;
       
-      let query = "";
+      let query = "INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) VALUES ";
       const values = [];
       let valIdx = 1;
       
       await ensureSchemaChecked();
-
-      if (hasIdColumn) {
-        query = "INSERT INTO harga_domba_harian (id, tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) VALUES ";
-      } else {
-        query = "INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) VALUES ";
-      }
 
       for (let i = numDays; i >= 0; i--) {
         const d = new Date(now);
@@ -730,24 +696,15 @@ async function seedPrices() {
         const highPrice = Math.round(Math.max(javaPrice, nasPrice) * (1.08 + Math.random() * 0.04) / 100) * 100;
         const lowPrice = Math.round(Math.min(javaPrice, nasPrice) * (0.92 - Math.random() * 0.04) / 100) * 100;
         
-        const idStr = `PRC-SEED-${1000 + i}`;
         const sourceStr = "Sistem Otomatis";
         
-        if (hasIdColumn) {
-          values.push(idStr, dateStr, javaPrice, nasPrice, highPrice, lowPrice, sourceStr);
-        } else {
-          values.push(dateStr, javaPrice, nasPrice, highPrice, lowPrice, sourceStr);
-        }
+        values.push(dateStr, javaPrice, nasPrice, highPrice, lowPrice, sourceStr);
       }
       
       const valueStrings = [];
-      const colsCount = hasIdColumn ? 7 : 6;
+      const colsCount = 6;
       for (let i = 0; i < values.length; i += colsCount) {
-        if (hasIdColumn) {
-          valueStrings.push(`($${valIdx}, $${valIdx+1}, $${valIdx+2}, $${valIdx+3}, $${valIdx+4}, $${valIdx+5}, $${valIdx+6})`);
-        } else {
-          valueStrings.push(`($${valIdx}, $${valIdx+1}, $${valIdx+2}, $${valIdx+3}, $${valIdx+4}, $${valIdx+5})`);
-        }
+        valueStrings.push(`($${valIdx}, $${valIdx+1}, $${valIdx+2}, $${valIdx+3}, $${valIdx+4}, $${valIdx+5})`);
         valIdx += colsCount;
       }
       
