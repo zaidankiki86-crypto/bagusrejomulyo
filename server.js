@@ -429,20 +429,25 @@ app.post('/api/sheep-prices', async (req, res) => {
   try {
     await ensureSchemaChecked();
 
-    const result = await pool.query(`
-      INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-      VALUES ($1, $2, $3, $4, $5, $6)
-      ON CONFLICT (tanggal) 
-      DO UPDATE SET 
-         harga_jawa = EXCLUDED.harga_jawa,
-         harga_nasional = EXCLUDED.harga_nasional,
-         harga_tertinggi = EXCLUDED.harga_tertinggi,
-         harga_terendah = EXCLUDED.harga_terendah,
-         sumber = EXCLUDED.sumber
-      RETURNING *
-    `, [tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
-
-    const finalId = result.rows[0]?.id || tanggal;
+    const checkRes = await pool.query("SELECT * FROM harga_domba_harian WHERE tanggal = $1", [tanggal]);
+    
+    let finalId;
+    if (checkRes.rows.length > 0) {
+      const updateRes = await pool.query(`
+        UPDATE harga_domba_harian 
+        SET harga_jawa = $1, harga_nasional = $2, harga_tertinggi = $3, harga_terendah = $4, sumber = $5 
+        WHERE tanggal = $6
+        RETURNING *
+      `, [cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber, tanggal]);
+      finalId = updateRes.rows[0]?.id || checkRes.rows[0].id || tanggal;
+    } else {
+      const insertRes = await pool.query(`
+        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `, [tanggal, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      finalId = insertRes.rows[0]?.id || tanggal;
+    }
 
     dbVersion = Date.now();
     res.status(201).json({ success: true, id: finalId });
@@ -604,22 +609,28 @@ app.post('/api/fetch-automated-prices', async (req, res) => {
   try {
     await ensureSchemaChecked();
 
-    const queryResult = await pool.query(`
-      INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
-      VALUES ($1, $2, $3, $4, $5, $6)
-      ON CONFLICT (tanggal) 
-      DO UPDATE SET 
-         harga_jawa = EXCLUDED.harga_jawa,
-         harga_nasional = EXCLUDED.harga_nasional,
-         harga_tertinggi = EXCLUDED.harga_tertinggi,
-         harga_terendah = EXCLUDED.harga_terendah,
-         sumber = EXCLUDED.sumber
-      RETURNING *
-    `, [todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+    const checkRes = await pool.query("SELECT * FROM harga_domba_harian WHERE tanggal = $1", [todayStr]);
     
-    const finalId = queryResult.rows[0]?.id || todayStr;
+    let finalId;
+    if (checkRes.rows.length > 0) {
+      const updateRes = await pool.query(`
+        UPDATE harga_domba_harian 
+        SET harga_jawa = $1, harga_nasional = $2, harga_tertinggi = $3, harga_terendah = $4, sumber = $5 
+        WHERE tanggal = $6
+        RETURNING *
+      `, [cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber, todayStr]);
+      finalId = updateRes.rows[0]?.id || checkRes.rows[0].id || todayStr;
+    } else {
+      const insertRes = await pool.query(`
+        INSERT INTO harga_domba_harian (tanggal, harga_jawa, harga_nasional, harga_tertinggi, harga_terendah, sumber) 
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `, [todayStr, cleanHargaJawa, cleanHargaNasional, cleanHargaTertinggi, cleanHargaTerendah, sumber]);
+      finalId = insertRes.rows[0]?.id || todayStr;
+    }
+    
     dbVersion = Date.now();
-    console.log(`Saved price record to database successfully via UPSERT. Sumber: ${sumber}`);
+    console.log(`Saved price record to database successfully. Sumber: ${sumber}`);
 
     // Return success response to the frontend
     res.status(200).json({ 
